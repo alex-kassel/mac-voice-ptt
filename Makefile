@@ -1,12 +1,15 @@
-.PHONY: all build app install uninstall clean
+.PHONY: all build app dmg install uninstall clean
 
-all: app
+all: app dmg
 
 build:
 	swift build -c release --build-system native
 
 app:
 	bash scripts/build_app.sh
+
+dmg: app
+	bash scripts/create_dmg.sh
 
 install: app
 	bash scripts/install.sh
