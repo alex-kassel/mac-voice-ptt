@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         // Run as background menu bar accessory (no Dock icon, no App Switcher)
         NSApp.setActivationPolicy(.accessory)
 
+        // Disable macOS automatic app termination/sleep for menu bar app
+        ProcessInfo.processInfo.disableAutomaticTermination("Dictaphone background push-to-talk listener")
+
+        Logger.log("[AppDelegate] Starting Dictaphone...")
+
         // Initialize UI
         menuBarController = MenuBarController()
         menuBarController.delegate = self
@@ -20,24 +25,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         let hotkeyManager = HotkeyManager.shared
         hotkeyManager.delegate = self
 
-        // Check Accessibility permission
-        if !HotkeyManager.checkAccessibilityPermission(prompt: false) {
-            NSLog("[AppDelegate] Accessibility permission not granted yet. Prompting user...")
-            _ = HotkeyManager.checkAccessibilityPermission(prompt: true)
-        }
-
         // Check Microphone permission
         AudioRecorder.checkMicrophonePermission { granted in
-            if !granted {
-                NSLog("[AppDelegate] Microphone permission denied or restricted.")
-            }
+            Logger.log("[AppDelegate] Microphone permission: %@", granted ? "AUTHORIZED" : "DENIED")
         }
 
         hotkeyManager.start()
-        NSLog("[AppDelegate] Dictaphone initialized and running.")
+        Logger.log("[AppDelegate] Dictaphone initialized and ready.")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        Logger.log("[AppDelegate] Application terminating...")
         HotkeyManager.shared.stop()
         overlayPanel.hide()
         recorder.cancel()
@@ -46,8 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
     // MARK: - HotkeyManagerDelegate
 
     func hotkeyDidStartRecording() {
+        Logger.log("[AppDelegate] Starting audio recorder...")
         guard recorder.start() else {
-            NSLog("[AppDelegate] Failed to start audio recording.")
+            Logger.log("[AppDelegate] Failed to start audio recorder!")
             return
         }
         overlayPanel.show()
@@ -59,10 +58,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         menuBarController.setRecording(false)
 
         guard let fileURL = recorder.stop() else {
+            Logger.log("[AppDelegate] Recording stopped: audio discarded (too short or empty)")
             return
         }
 
         let language = ConfigManager.shared.config.language
+        Logger.log("[AppDelegate] Audio captured at: %@. Requesting transcription (lang: %@)...", fileURL.path, language)
 
         Task {
             do {
@@ -70,13 +71,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
                 try? FileManager.default.removeItem(at: fileURL)
 
                 if !text.isEmpty {
+                    Logger.log("[AppDelegate] Transcription success (%ld chars). Pasting...", text.count)
                     await MainActor.run {
                         Paster.shared.paste(text: text)
                     }
+                } else {
+                    Logger.log("[AppDelegate] Transcription returned empty text.")
                 }
             } catch {
                 try? FileManager.default.removeItem(at: fileURL)
-                NSLog("[AppDelegate] Transcription error: %@", error.localizedDescription)
+                Logger.log("[AppDelegate] Transcription failed: %@", error.localizedDescription)
                 await MainActor.run {
                     self.showErrorNotification(error.localizedDescription)
                 }
@@ -85,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
     }
 
     func hotkeyDidCancelRecording() {
+        Logger.log("[AppDelegate] Recording cancelled.")
         overlayPanel.hide()
         menuBarController.setRecording(false)
         recorder.cancel()
@@ -101,10 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
     }
 
     func menuBarDidChangeLanguage(_ language: String) {
-        // Saved in ConfigManager
+        Logger.log("[AppDelegate] Language changed to: %@", language)
     }
 
     func menuBarDidRequestQuit() {
+        Logger.log("[AppDelegate] Quit requested via menu bar.")
         NSApp.terminate(nil)
     }
 

@@ -34,9 +34,9 @@ chmod +x "$APP_BUNDLE/Contents/MacOS/Dictaphone"
 # Copy Info.plist
 cp "$PROJECT_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 
-# Ad-hoc code signing (allows macOS to identify and store Accessibility/Mic permissions per bundle)
-echo "-> Signing $APP_NAME..."
-codesign --force --deep --sign - "$APP_BUNDLE"
+# Code signing with stable Designated Requirement so macOS TCC doesn't lose permissions on rebuild
+echo "-> Signing $APP_NAME with stable designated requirement..."
+codesign --force --deep --sign - --requirements '=designated => identifier "com.fcc.Dictaphone"' "$APP_BUNDLE"
 
 echo ""
 echo "[OK] Successfully built: $APP_BUNDLE"
