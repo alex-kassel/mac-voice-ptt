@@ -4,6 +4,10 @@
 
 Built completely in **Swift** with **zero external dependencies**, relying exclusively on native macOS frameworks (`AppKit`, `AVFoundation`, `CoreGraphics`, `ServiceManagement`, `Foundation`).
 
+[![Download DMG](https://img.shields.io/badge/Download-Dictaphone.dmg-blue?style=for-the-badge&logo=apple)](https://github.com/alex-kassel/mac-voice-ptt/releases/latest/download/Dictaphone.dmg)
+[![macOS](https://img.shields.io/badge/macOS-13.0+-black?style=for-the-badge&logo=apple)](https://github.com/alex-kassel/mac-voice-ptt)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+
 ---
 
 ## Highlights
