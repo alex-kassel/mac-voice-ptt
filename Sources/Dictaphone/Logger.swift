@@ -3,25 +3,32 @@ import Foundation
 final class Logger {
     static let shared = Logger()
     private let logFileURL: URL
-    private let fileHandle: FileHandle?
+    private let backupFileURL: URL
+    private var fileHandle: FileHandle?
     private let dateFormatter: DateFormatter
     private let queue = DispatchQueue(label: "com.fcc.dictaphone.logger", qos: .utility)
+    private let maxLogSizeBytes: UInt64 = 2 * 1024 * 1024 // 2 MB maximum file size
 
     private init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let dir = home.appendingPathComponent(".dictaphone", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
         self.logFileURL = dir.appendingPathComponent("dictaphone.log")
-
-        if !FileManager.default.fileExists(atPath: logFileURL.path) {
-            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
-        }
-
-        self.fileHandle = try? FileHandle(forWritingTo: logFileURL)
-        self.fileHandle?.seekToEndOfFile()
+        self.backupFileURL = dir.appendingPathComponent("dictaphone.log.1")
 
         self.dateFormatter = DateFormatter()
         self.dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+
+        openHandle()
+    }
+
+    private func openHandle() {
+        if !FileManager.default.fileExists(atPath: logFileURL.path) {
+            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+        }
+        self.fileHandle = try? FileHandle(forWritingTo: logFileURL)
+        self.fileHandle?.seekToEndOfFile()
     }
 
     static func log(_ message: String, _ args: CVarArg...) {
@@ -35,8 +42,33 @@ final class Logger {
         NSLog("%@", message)
 
         queue.async { [weak self] in
-            guard let handle = self?.fileHandle, let data = line.data(using: .utf8) else { return }
+            guard let self = self else { return }
+
+            self.rotateIfNeeded()
+
+            guard let handle = self.fileHandle, let data = line.data(using: .utf8) else { return }
             handle.write(data)
+        }
+    }
+
+    private func rotateIfNeeded() {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: logFileURL.path)
+        let size = (attrs?[.size] as? UInt64) ?? 0
+
+        if size >= maxLogSizeBytes {
+            // Close current handle
+            try? fileHandle?.close()
+            fileHandle = nil
+
+            // Rotate: dictaphone.log -> dictaphone.log.1
+            try? FileManager.default.removeItem(at: backupFileURL)
+            try? FileManager.default.moveItem(at: logFileURL, to: backupFileURL)
+
+            // Re-open fresh log file
+            openHandle()
+            if let handle = fileHandle, let notice = "[\(dateFormatter.string(from: Date()))] [Logger] Log rotated (exceeded 2MB limit).\n".data(using: .utf8) {
+                handle.write(notice)
+            }
         }
     }
 }
