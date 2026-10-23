@@ -39,7 +39,7 @@ Built completely in **Swift** with **zero external dependencies**, relying exclu
 ## Repository Structure
 
 ```
-mac-voice-ptt-swift/
+mac-voice-ptt/
 ├── Package.swift                  # SwiftPM package manifest (macOS 13.0+)
 ├── Makefile                       # High-level build, packaging, and install targets
 ├── Resources/
@@ -50,13 +50,13 @@ mac-voice-ptt-swift/
 │       ├── AppDelegate.swift      # NSApplication lifecycle coordinator & background policy
 │       ├── Config.swift           # JSON config manager (~/.dictaphone/config.json & .env)
 │       ├── HotkeyManager.swift    # Global keyboard listener & permission watcher
-│       ├── AudioRecorder.swift    # 16kHz WAV capture via AVFoundation
+│       ├── AudioRecorder.swift    # 16kHz WAV capture via AVFoundation (with prepare & padding)
 │       ├── Transcriber.swift      # Async URLSession multipart client for OpenAI API
 │       ├── OverlayPanel.swift     # Floating HUD overlay with live timer & pulsing dot
 │       ├── Paster.swift           # Synthetic Cmd+V paste with clipboard restoration
 │       ├── MenuBarController.swift# NSStatusItem menu bar UI (◉/●) and preferences
 │       ├── LaunchAtLoginManager.swift # Native login item registration via SMAppService
-│       └── Logger.swift           # Thread-safe persistent file logger (~/.dictaphone/dictaphone.log)
+│       └── Logger.swift           # Thread-safe persistent file logger with auto-rotation (2MB cap)
 └── scripts/
     ├── build_app.sh               # Builds release binary, creates Dictaphone.app & signs
     ├── create_dmg.sh              # Packages Dictaphone.app into Dictaphone.dmg
