@@ -46,6 +46,7 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         do {
             let rec = try AVAudioRecorder(url: fileURL, settings: settings)
             rec.delegate = self
+            rec.prepareToRecord()
             if rec.record() {
                 self.recorder = rec
                 self.startTime = Date()
@@ -55,7 +56,7 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
                 return false
             }
         } catch {
-            NSLog("[AudioRecorder] Error starting recorder: %@", error.localizedDescription)
+            Logger.log("[AudioRecorder] Error starting recorder: %@", error.localizedDescription)
             cleanupCurrentFile()
             return false
         }
@@ -67,6 +68,9 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
             return nil
         }
 
+        // Brief tail buffer (120ms) so the final syllable isn't clipped upon releasing key
+        Thread.sleep(forTimeInterval: 0.12)
+
         let duration = startTime.map { Date().timeIntervalSince($0) } ?? 0.0
         rec.stop()
         recorder = nil
@@ -76,7 +80,7 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         // Discard recordings shorter than 0.25 seconds or smaller than 2KB
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         if duration < 0.25 || fileSize < 2048 {
-            NSLog("[AudioRecorder] Discarding short/empty recording (duration: %.2fs, size: %d bytes)", duration, fileSize)
+            Logger.log("[AudioRecorder] Discarding short recording (duration: %.2fs, size: %d bytes)", duration, fileSize)
             cleanupCurrentFile()
             return nil
         }

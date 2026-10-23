@@ -71,12 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
                 try? FileManager.default.removeItem(at: fileURL)
 
                 if !text.isEmpty {
-                    Logger.log("[AppDelegate] Transcription success (%ld chars). Pasting...", text.count)
+                    let preview = text.count > 60 ? String(text.prefix(60)) + "..." : text
+                    Logger.log("[AppDelegate] Transcription success (%ld chars): '%@'. Pasting...", text.count, preview)
                     await MainActor.run {
                         Paster.shared.paste(text: text)
                     }
                 } else {
-                    Logger.log("[AppDelegate] Transcription returned empty text.")
+                    Logger.log("[AppDelegate] Transcription returned empty text (audio was silent or below voice threshold).")
                 }
             } catch {
                 try? FileManager.default.removeItem(at: fileURL)
