@@ -120,20 +120,28 @@ final class OverlayPanel: NSPanel {
             defer: false
         )
 
-        self.level = .statusBar
+        // Use screenSaverWindow level (level 1000) so HUD overlay floats over ALL apps, including full-width Electron / Antigravity windows
+        self.level = NSWindow.Level(Int(CGWindowLevelForKey(.screenSaverWindow)))
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
         self.isReleasedWhenClosed = false
         self.hidesOnDeactivate = false
+        self.isFloatingPanel = true
+        self.ignoresMouseEvents = true
 
         self.contentView = overlayView
     }
 
+    override var canBecomeKey: Bool { return false }
+    override var canBecomeMain: Bool { return false }
+
     func show() {
         DispatchQueue.main.async {
             self.updatePosition()
+            self.alphaValue = 1.0
+            self.setIsVisible(true)
             self.overlayView.startTimer()
             self.orderFrontRegardless()
         }
@@ -147,9 +155,9 @@ final class OverlayPanel: NSPanel {
     }
 
     private func updatePosition() {
-        let mouseLocation = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) })
-            ?? NSScreen.main
+        // Prioritize the screen with active keyboard focus (e.g. where user is typing/dictating in Antigravity)
+        let screen = NSScreen.main
+            ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
             ?? NSScreen.screens.first
 
         guard let targetScreen = screen else { return }
