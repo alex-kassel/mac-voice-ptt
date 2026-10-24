@@ -16,13 +16,31 @@ final class HistoryTableView: NSTableView {
     }
 }
 
+final class EditableHistoryTextField: NSTextField {
+    var onEditingBegan: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result {
+            self.textColor = .textColor
+            if let editor = self.currentEditor() as? NSTextView {
+                editor.textColor = .textColor
+                editor.insertionPointColor = .textColor
+            }
+            onEditingBegan?()
+        }
+        return result
+    }
+}
+
 final class HistoryRowCellView: NSTableCellView, NSTextFieldDelegate {
     let numLabel = NSTextField(labelWithString: "")
-    let contentTextField = NSTextField()
+    let contentTextField = EditableHistoryTextField()
     let delBtn = NSButton()
 
     var onTextEdited: ((String) -> Void)?
     var onDeleteClicked: (() -> Void)?
+    private var isCurrentlyEditing = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -54,6 +72,9 @@ final class HistoryRowCellView: NSTableCellView, NSTextFieldDelegate {
         contentTextField.cell?.wraps = true
         contentTextField.cell?.isScrollable = false
         contentTextField.delegate = self
+        contentTextField.onEditingBegan = { [weak self] in
+            self?.isCurrentlyEditing = true
+        }
         addSubview(contentTextField)
 
         // 3. Delete button (✕)
@@ -70,7 +91,21 @@ final class HistoryRowCellView: NSTableCellView, NSTextFieldDelegate {
         onDeleteClicked?()
     }
 
+    func controlTextDidBeginEditing(_ obj: Notification) {
+        isCurrentlyEditing = true
+        contentTextField.textColor = .textColor
+        if let editor = (obj.userInfo?["NSFieldEditor"] as? NSTextView)
+            ?? contentTextField.currentEditor() as? NSTextView {
+            editor.textColor = .textColor
+            editor.insertionPointColor = .textColor
+        }
+    }
+
     func controlTextDidEndEditing(_ obj: Notification) {
+        isCurrentlyEditing = false
+        let isSelected = (superview as? NSTableRowView)?.isSelected ?? false
+        updateAppearance(isSelected: isSelected)
+
         let newText = contentTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !newText.isEmpty {
             onTextEdited?(newText)
@@ -85,6 +120,13 @@ final class HistoryRowCellView: NSTableCellView, NSTextFieldDelegate {
     }
 
     func updateAppearance(isSelected: Bool) {
+        if isCurrentlyEditing {
+            contentTextField.textColor = .textColor
+            numLabel.textColor = .secondaryLabelColor
+            delBtn.contentTintColor = .secondaryLabelColor
+            return
+        }
+
         if isSelected {
             contentTextField.textColor = .white
             numLabel.textColor = NSColor(white: 0.9, alpha: 0.8)
