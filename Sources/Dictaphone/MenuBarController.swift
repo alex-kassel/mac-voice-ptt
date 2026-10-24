@@ -94,24 +94,29 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        // 5. Launch at Login
+        // 5. Preferences Window
+        let prefItem = NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ",")
+        prefItem.target = self
+        menu.addItem(prefItem)
+
+        // 6. Launch at Login
         launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         launchAtLoginItem.target = self
         menu.addItem(launchAtLoginItem)
 
-        // 6. API Key prompt
+        // 7. OpenAI API Key
         let apiKeyItem = NSMenuItem(title: "OpenAI API Key...", action: #selector(promptApiKey), keyEquivalent: "")
         apiKeyItem.target = self
         menu.addItem(apiKeyItem)
 
-        // 7. Open Log File
+        // 8. Open Log File
         let logItem = NSMenuItem(title: "Open Log File", action: #selector(openLogFile), keyEquivalent: "")
         logItem.target = self
         menu.addItem(logItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        // 8. Quit
+        // 9. Quit
         let quitItem = NSMenuItem(title: "Quit Dictaphone", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -173,6 +178,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func openHistoryWindow() {
         HistoryWindowController.shared.showHistory()
+    }
+
+    @objc private func openPreferences() {
+        PreferencesWindowController.shared.showPreferences()
     }
 
     @objc private func copyHistoryItem(_ sender: NSMenuItem) {

@@ -130,6 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
     private func setupMainMenu() {
         let mainMenu = NSMenu()
         let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu(title: "Dictaphone")
+        let prefItem = NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ",")
+        prefItem.target = self
+        appMenu.addItem(prefItem)
+        appMenu.addItem(NSMenuItem.separator())
+        let quitItem = NSMenuItem(title: "Quit Dictaphone", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(quitItem)
+        appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
         let editMenuItem = NSMenuItem()
@@ -146,5 +154,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         mainMenu.addItem(editMenuItem)
 
         NSApp.mainMenu = mainMenu
+    }
+
+    @objc private func openPreferences() {
+        PreferencesWindowController.shared.showPreferences()
     }
 }

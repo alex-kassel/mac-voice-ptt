@@ -127,7 +127,9 @@ final class HistoryRowCellView: NSTableCellView, NSTextFieldDelegate {
             return
         }
 
-        if isSelected {
+        let isEmphasized = (superview as? NSTableRowView)?.isEmphasized ?? true
+
+        if isSelected && isEmphasized {
             contentTextField.textColor = .white
             numLabel.textColor = NSColor(white: 0.9, alpha: 0.8)
             delBtn.contentTintColor = .white
@@ -301,14 +303,25 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     func showHistory() {
         refreshData()
-        if filteredItems.count > 0 {
-            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-            tableView.scrollRowToVisible(0)
-        }
+
+        let focusMode = ConfigManager.shared.config.focusMode
+
         if let window = self.window {
             window.center()
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+
+            switch focusMode {
+            case .firstItem:
+                if filteredItems.count > 0 {
+                    tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+                    tableView.scrollRowToVisible(0)
+                    window.makeFirstResponder(tableView)
+                }
+            case .searchField:
+                tableView.deselectAll(nil)
+                window.makeFirstResponder(searchField)
+            }
         }
     }
 
