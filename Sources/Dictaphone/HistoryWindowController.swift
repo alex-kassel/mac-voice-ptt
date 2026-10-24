@@ -301,6 +301,10 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     func showHistory() {
         refreshData()
+        if filteredItems.count > 0 {
+            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+            tableView.scrollRowToVisible(0)
+        }
         if let window = self.window {
             window.center()
             window.makeKeyAndOrderFront(nil)
@@ -388,8 +392,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
         cell?.onDeleteClicked = { [weak self] in
             guard let self = self else { return }
-            HistoryManager.shared.delete(index: item.index)
-            self.refreshData()
+            self.confirmAndDelete(index: item.index, text: item.text)
         }
 
         return cell
@@ -443,9 +446,26 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         }
     }
 
+    private func confirmAndDelete(index: Int, text: String) {
+        guard let window = self.window else { return }
+        let preview = text.count > 60 ? String(text.prefix(60)) + "..." : text
+        let alert = NSAlert()
+        alert.messageText = "Delete Transcription?"
+        alert.informativeText = "Are you sure you want to delete this transcription?\n\n\"\(preview)\""
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn {
+                HistoryManager.shared.delete(index: index)
+                self?.refreshData()
+            }
+        }
+    }
+
     @objc private func deleteSelectedClicked() {
         let selectedRows = tableView.selectedRowIndexes
-        guard !selectedRows.isEmpty else { return }
+        guard !selectedRows.isEmpty, let window = self.window else { return }
 
         var originalIndexes: [Int] = []
         for r in selectedRows {
@@ -454,21 +474,36 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
             }
         }
 
-        HistoryManager.shared.delete(indexes: originalIndexes)
-        refreshData()
+        let count = originalIndexes.count
+        let alert = NSAlert()
+        alert.messageText = count == 1 ? "Delete Selected Item?" : "Delete \(count) Selected Items?"
+        alert.informativeText = count == 1
+            ? "Are you sure you want to delete the selected transcription?"
+            : "Are you sure you want to delete \(count) selected transcriptions?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn {
+                HistoryManager.shared.delete(indexes: originalIndexes)
+                self?.refreshData()
+            }
+        }
     }
 
     @objc private func clearAllClicked() {
+        guard let window = self.window else { return }
         let alert = NSAlert()
         alert.messageText = "Clear Transcriptions History"
-        alert.informativeText = "Are you sure you want to delete all saved transcriptions?"
-        alert.alertStyle = .warning
+        alert.informativeText = "Are you sure you want to delete all saved transcriptions? This action cannot be undone."
+        alert.alertStyle = .critical
         alert.addButton(withTitle: "Clear All")
         alert.addButton(withTitle: "Cancel")
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            HistoryManager.shared.clear()
-            refreshData()
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn {
+                HistoryManager.shared.clear()
+                self?.refreshData()
+            }
         }
     }
 
