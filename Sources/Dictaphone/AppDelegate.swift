@@ -74,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
                 try? FileManager.default.removeItem(at: fileURL)
 
                 if !text.isEmpty {
+                    HistoryManager.shared.add(text: text)
                     let preview = text.count > 60 ? String(text.prefix(60)) + "..." : text
                     Logger.log("[AppDelegate] Transcription success (%ld chars): '%@'. Pasting...", text.count, preview)
                     await MainActor.run {

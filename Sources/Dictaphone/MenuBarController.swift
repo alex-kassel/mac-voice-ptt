@@ -16,6 +16,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var activeMenuItem: NSMenuItem!
     private var hotkeyMenu: NSMenu!
     private var languageMenu: NSMenu!
+    private var historyMenu: NSMenu!
     private var launchAtLoginItem: NSMenuItem!
 
     override init() {
@@ -42,7 +43,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        // Refresh menu states when user clicks the menu bar item
         refreshMenuStates()
     }
 
@@ -54,7 +54,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         activeMenuItem.target = self
         menu.addItem(activeMenuItem)
 
-        // 2. Hotkey submenu
+        // 2. Recent Transcriptions (History) Submenu
+        let historyParent = NSMenuItem(title: "Recent Transcriptions", action: nil, keyEquivalent: "")
+        historyMenu = NSMenu(title: "Recent Transcriptions")
+        historyParent.submenu = historyMenu
+        menu.addItem(historyParent)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 3. Hotkey submenu
         let hotkeyParent = NSMenuItem(title: "Hotkey", action: nil, keyEquivalent: "")
         hotkeyMenu = NSMenu(title: "Hotkey")
         for key in Hotkey.allCases {
@@ -66,7 +74,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         hotkeyParent.submenu = hotkeyMenu
         menu.addItem(hotkeyParent)
 
-        // 3. Language submenu
+        // 4. Language submenu
         let langParent = NSMenuItem(title: "Language", action: nil, keyEquivalent: "")
         languageMenu = NSMenu(title: "Language")
         let languages = [
@@ -86,19 +94,24 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        // 4. Launch at Login
+        // 5. Launch at Login
         launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         launchAtLoginItem.target = self
         menu.addItem(launchAtLoginItem)
 
-        // 5. API Key prompt
+        // 6. API Key prompt
         let apiKeyItem = NSMenuItem(title: "OpenAI API Key...", action: #selector(promptApiKey), keyEquivalent: "")
         apiKeyItem.target = self
         menu.addItem(apiKeyItem)
 
+        // 7. Open Log File
+        let logItem = NSMenuItem(title: "Open Log File", action: #selector(openLogFile), keyEquivalent: "")
+        logItem.target = self
+        menu.addItem(logItem)
+
         menu.addItem(NSMenuItem.separator())
 
-        // 6. Quit
+        // 8. Quit
         let quitItem = NSMenuItem(title: "Quit Dictaphone", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -124,6 +137,38 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
 
         launchAtLoginItem.state = LaunchAtLoginManager.shared.isEnabled ? .on : .off
+
+        // Refresh Recent Transcriptions Submenu
+        historyMenu.removeAllItems()
+        let history = HistoryManager.shared.getHistory()
+        if history.isEmpty {
+            let emptyItem = NSMenuItem(title: "No Recent Transcriptions", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            historyMenu.addItem(emptyItem)
+        } else {
+            for (idx, text) in history.enumerated() {
+                let preview = text.count > 48 ? String(text.prefix(48)) + "..." : text
+                let item = NSMenuItem(title: "\(idx + 1). \(preview)", action: #selector(copyHistoryItem(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = idx
+                item.toolTip = text
+                historyMenu.addItem(item)
+            }
+            historyMenu.addItem(NSMenuItem.separator())
+            let clearItem = NSMenuItem(title: "Clear History", action: #selector(clearHistory), keyEquivalent: "")
+            clearItem.target = self
+            historyMenu.addItem(clearItem)
+        }
+    }
+
+    @objc private func copyHistoryItem(_ sender: NSMenuItem) {
+        let index = sender.tag
+        _ = HistoryManager.shared.copyToClipboard(index: index)
+    }
+
+    @objc private func clearHistory() {
+        HistoryManager.shared.clear()
+        refreshMenuStates()
     }
 
     @objc private func toggleActive() {
@@ -175,6 +220,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             let newKey = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             ConfigManager.shared.update(apiKey: newKey)
         }
+    }
+
+    @objc private func openLogFile() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let logUrl = home.appendingPathComponent(".dictaphone/dictaphone.log")
+        NSWorkspace.shared.open(logUrl)
     }
 
     @objc private func quitApp() {
