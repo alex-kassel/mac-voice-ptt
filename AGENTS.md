@@ -38,15 +38,19 @@ Push-to-Talk voice dictation tool for macOS powered by OpenAI's `gpt-4o-mini-tra
    - **Order Rule**:
      - In the window and menu, items are sorted **newest first** (#1 is latest spoken).
      - Upon multi-selection (`Cmd+Click`, `Shift+Click`), `copyCombined` reverses the selection to natural chronological order (oldest to newest) and joins items with newline `\n` to assemble coherent prompts without manual re-ordering.
-   - **Inline Editing & Deletion**: Cells allow inline text modifications auto-saved to `history.json` on edit end; single items can be removed via the `✕` button or Backspace/Delete key.
+   - **Dynamic Table Row Heights & Baseline Alignment**:
+     - Unselected rows are collapsed to a single line (38pt height), with row number, text field, and delete button `✕` vertically centered on the exact same baseline.
+     - Selected rows (`isRowSelected(row)`) dynamically expand via `tableView(_:heightOfRow:)` and `noteHeightOfRows` to display the entire multi-line text with word wrapping. Double-clicking or clicking into the text allows editing the full multi-line text inline.
+     - Unselected rows collapse back to single line with tail truncation (`...`).
+   - For user-facing feature overviews, refer directly to `README.md`.
 
 6. **Diagnostics & Logging (`Logger.swift`)**:
    - Writes to `~/.dictaphone/dictaphone.log` with automatic 2 MB log rotation.
    - Menu bar item **«Open Log File»** for instant inspection.
    - Each session is isolated with leading newline `\n` and quoted transcription previews.
 
-7. **Documentation Maintenance (`README.md` & `AGENTS.md`)**:
-   - Any new feature, shortcut, or architectural change MUST immediately be documented in `README.md` and this localized `AGENTS.md`. Never let docs fall out of sync with code.
+7. **Release Policy**:
+   - Always ask the user for confirmation before creating GitHub releases or tagging new versions. Do not create releases automatically on minor commits.
 
 ---
 

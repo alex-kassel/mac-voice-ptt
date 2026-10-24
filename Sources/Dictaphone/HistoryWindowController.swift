@@ -16,7 +16,120 @@ final class HistoryTableView: NSTableView {
     }
 }
 
-final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSTextFieldDelegate {
+final class HistoryRowCellView: NSTableCellView, NSTextFieldDelegate {
+    let numLabel = NSTextField(labelWithString: "")
+    let contentTextField = NSTextField()
+    let delBtn = NSButton()
+
+    var onTextEdited: ((String) -> Void)?
+    var onDeleteClicked: (() -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupViews()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupViews()
+    }
+
+    private func setupViews() {
+        // 1. Number label (#1, #2...)
+        numLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .bold)
+        numLabel.textColor = .secondaryLabelColor
+        numLabel.alignment = .left
+        numLabel.isBezeled = false
+        numLabel.drawsBackground = false
+        numLabel.isEditable = false
+        addSubview(numLabel)
+
+        // 2. Editable Text field
+        contentTextField.font = NSFont.systemFont(ofSize: 13.0)
+        contentTextField.textColor = .labelColor
+        contentTextField.isEditable = true
+        contentTextField.isSelectable = true
+        contentTextField.isBezeled = false
+        contentTextField.drawsBackground = false
+        contentTextField.cell?.wraps = true
+        contentTextField.cell?.isScrollable = false
+        contentTextField.delegate = self
+        addSubview(contentTextField)
+
+        // 3. Delete button (✕)
+        delBtn.title = "✕"
+        delBtn.bezelStyle = .inline
+        delBtn.isBordered = false
+        delBtn.font = NSFont.systemFont(ofSize: 12.0, weight: .semibold)
+        delBtn.target = self
+        delBtn.action = #selector(deleteTapped)
+        addSubview(delBtn)
+    }
+
+    @objc private func deleteTapped() {
+        onDeleteClicked?()
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        let newText = contentTextField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !newText.isEmpty {
+            onTextEdited?(newText)
+        }
+    }
+
+    func configure(numText: String, text: String, isSelected: Bool) {
+        numLabel.stringValue = numText
+        contentTextField.stringValue = text
+        updateLayout(isSelected: isSelected)
+        updateAppearance(isSelected: isSelected)
+    }
+
+    func updateAppearance(isSelected: Bool) {
+        if isSelected {
+            contentTextField.textColor = .white
+            numLabel.textColor = NSColor(white: 0.9, alpha: 0.8)
+            delBtn.contentTintColor = .white
+        } else {
+            contentTextField.textColor = .labelColor
+            numLabel.textColor = .secondaryLabelColor
+            delBtn.contentTintColor = .secondaryLabelColor
+        }
+    }
+
+    func updateLayout(isSelected: Bool) {
+        let h = bounds.height
+        let numWidth: CGFloat = 34.0
+        let delWidth: CGFloat = 24.0
+        let textX: CGFloat = 46.0
+        let textWidth = max(50.0, bounds.width - textX - delWidth - 12.0)
+
+        if isSelected && h > 42.0 {
+            // Expanded multi-line
+            numLabel.frame = NSRect(x: 8, y: h - 26, width: numWidth, height: 18)
+            delBtn.frame = NSRect(x: bounds.width - delWidth - 8, y: h - 26, width: delWidth, height: 18)
+            contentTextField.frame = NSRect(x: textX, y: 10, width: textWidth, height: h - 20)
+            contentTextField.maximumNumberOfLines = 0
+            contentTextField.lineBreakMode = .byWordWrapping
+        } else {
+            // Collapsed single-line, perfectly vertically centered on the exact same baseline
+            let midY = round((h - 20.0) / 2.0)
+            numLabel.frame = NSRect(x: 8, y: midY, width: numWidth, height: 20)
+            delBtn.frame = NSRect(x: bounds.width - delWidth - 8, y: midY, width: delWidth, height: 20)
+            contentTextField.frame = NSRect(x: textX, y: midY, width: textWidth, height: 20)
+            contentTextField.maximumNumberOfLines = 1
+            contentTextField.lineBreakMode = .byTruncatingTail
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        let isSelected = (superview as? NSTableRowView)?.isSelected ?? false
+        updateLayout(isSelected: isSelected)
+        updateAppearance(isSelected: isSelected)
+    }
+}
+
+final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
     static let shared = HistoryWindowController()
 
     private var tableView: HistoryTableView!
@@ -30,18 +143,31 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 660, height: 500),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Transcriptions History & Templates"
-        window.minSize = NSSize(width: 480, height: 340)
+        window.minSize = NSSize(width: 500, height: 350)
         window.center()
         window.isReleasedWhenClosed = false
         self.init(window: window)
 
         setupUI()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidResize(_:)),
+            name: NSWindow.didResizeNotification,
+            object: window
+        )
+    }
+
+    @objc private func windowDidResize(_ notification: Notification) {
+        if filteredItems.count > 0 {
+            tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<filteredItems.count))
+        }
     }
 
     private func setupUI() {
@@ -79,11 +205,13 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         tableView = HistoryTableView(frame: scrollView.bounds)
         tableView.autoresizingMask = [.width, .height]
         tableView.usesAlternatingRowBackgroundColors = true
-        tableView.rowHeight = 48.0
+        tableView.rowHeight = 38.0
         tableView.headerView = nil
         tableView.allowsMultipleSelection = true
+        tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
 
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("TextColumn"))
+        col.resizingMask = .autoresizingMask
         col.width = scrollView.bounds.width - 24.0
         tableView.addTableColumn(col)
 
@@ -153,7 +281,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
                 .map { ($0.offset, $0.element) }
         }
 
-        countLabel.stringValue = "\(filteredItems.count) of \(allItems.count) items • Double-click/Enter to edit, Cmd+Click to multi-select"
+        countLabel.stringValue = "\(filteredItems.count) of \(allItems.count) items • Click to expand full text, edit inline, Cmd+Click to combine"
         tableView.reloadData()
         updateSelectionUI()
     }
@@ -164,75 +292,62 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         }
     }
 
-    func controlTextDidEndEditing(_ obj: Notification) {
-        guard let textField = obj.object as? NSTextField, textField.tag >= 1000 else { return }
-        let originalIndex = textField.tag - 1000
-        let newText = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !newText.isEmpty {
-            HistoryManager.shared.update(index: originalIndex, newText: newText)
-            refreshData()
-        }
-    }
-
     // MARK: - NSTableViewDataSource & Delegate
 
     func numberOfRows(in tableView: NSTableView) -> Int {
         return filteredItems.count
     }
 
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        guard row < filteredItems.count else { return 38.0 }
+        let isSelected = tableView.isRowSelected(row)
+        if !isSelected {
+            return 38.0
+        }
+
+        // Calculate dynamic height for expanded full text
+        let text = filteredItems[row].text
+        let font = NSFont.systemFont(ofSize: 13.0)
+        let availableWidth = max(100.0, tableView.bounds.width - 98.0)
+        let constraintRect = CGSize(width: availableWidth, height: .greatestFiniteMagnitude)
+        let boundingBox = (text as NSString).boundingRect(
+            with: constraintRect,
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font],
+            context: nil
+        )
+        let textHeight = ceil(boundingBox.height)
+        return min(400.0, max(38.0, textHeight + 22.0))
+    }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard row < filteredItems.count else { return nil }
         let item = filteredItems[row]
+        let isSelected = tableView.isRowSelected(row)
 
-        let identifier = NSUserInterfaceItemIdentifier("EditableHistoryCell")
-        var cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
+        let identifier = NSUserInterfaceItemIdentifier("HistoryRowCellView")
+        var cell = tableView.makeView(withIdentifier: identifier, owner: self) as? HistoryRowCellView
         if cell == nil {
-            cell = NSTableCellView(frame: NSRect(x: 0, y: 0, width: tableView.bounds.width, height: 48))
+            cell = HistoryRowCellView(frame: NSRect(x: 0, y: 0, width: tableView.bounds.width, height: 38))
             cell?.identifier = identifier
-
-            // Number label
-            let numLabel = NSTextField(labelWithString: "")
-            numLabel.tag = 100
-            numLabel.frame = NSRect(x: 8, y: 14, width: 36, height: 20)
-            numLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .bold)
-            numLabel.textColor = .secondaryLabelColor
-            cell?.addSubview(numLabel)
-
-            // Editable Text Field
-            let textField = NSTextField(frame: NSRect(x: 48, y: 6, width: tableView.bounds.width - 92, height: 36))
-            textField.tag = 101
-            textField.font = NSFont.systemFont(ofSize: 13.0)
-            textField.textColor = .labelColor
-            textField.isEditable = true
-            textField.isSelectable = true
-            textField.isBezeled = false
-            textField.drawsBackground = false
-            textField.maximumNumberOfLines = 2
-            textField.lineBreakMode = .byTruncatingTail
-            textField.delegate = self
-            textField.autoresizingMask = [.width]
-            cell?.addSubview(textField)
-
-            // Delete row button (✕)
-            let delBtn = NSButton(title: "✕", target: self, action: #selector(deleteRowButtonClicked(_:)))
-            delBtn.tag = 102
-            delBtn.frame = NSRect(x: tableView.bounds.width - 38, y: 12, width: 26, height: 24)
-            delBtn.bezelStyle = .inline
-            delBtn.isBordered = false
-            delBtn.font = NSFont.systemFont(ofSize: 12.0, weight: .semibold)
-            delBtn.autoresizingMask = [.minXMargin]
-            cell?.addSubview(delBtn)
         }
 
-        if let num = cell?.viewWithTag(100) as? NSTextField {
-            num.stringValue = "#\(item.index + 1)"
+        cell?.configure(
+            numText: "#\(item.index + 1)",
+            text: item.text,
+            isSelected: isSelected
+        )
+
+        cell?.onTextEdited = { [weak self] newText in
+            guard let self = self else { return }
+            HistoryManager.shared.update(index: item.index, newText: newText)
+            self.refreshData()
         }
-        if let tf = cell?.viewWithTag(101) as? NSTextField {
-            tf.stringValue = item.text
-            tf.tag = 1000 + item.index // store original index for editing
-        }
-        if let btn = cell?.viewWithTag(102) as? NSButton {
-            btn.identifier = NSUserInterfaceItemIdentifier("\(item.index)")
+
+        cell?.onDeleteClicked = { [weak self] in
+            guard let self = self else { return }
+            HistoryManager.shared.delete(index: item.index)
+            self.refreshData()
         }
 
         return cell
@@ -240,6 +355,15 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         updateSelectionUI()
+
+        let count = filteredItems.count
+        guard count > 0 else { return }
+
+        // Animate row height transitions: selected rows expand to full text, unselected collapse to single line
+        NSAnimationContext.beginGrouping()
+        NSAnimationContext.current.duration = 0.15
+        tableView.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<count))
+        NSAnimationContext.endGrouping()
     }
 
     private func updateSelectionUI() {
@@ -289,12 +413,6 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         }
 
         HistoryManager.shared.delete(indexes: originalIndexes)
-        refreshData()
-    }
-
-    @objc private func deleteRowButtonClicked(_ sender: NSButton) {
-        guard let idStr = sender.identifier?.rawValue, let originalIndex = Int(idStr) else { return }
-        HistoryManager.shared.delete(index: originalIndex)
         refreshData()
     }
 
