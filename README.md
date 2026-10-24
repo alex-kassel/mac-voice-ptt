@@ -118,7 +118,7 @@ mac-voice-ptt/
 - **Dedicated History Window (`Cmd+H`)**:
   - **Inline Text Editing**: Double-click or edit any transcription text directly in the table cell. Changes auto-save on edit finish, turning past dictations into reusable prompt templates.
   - **Single & Batch Deletion**: Remove unwanted entries with the row delete button (`✕`) or the `Backspace` / `Delete` key.
-  - **Multi-Selection & Combined Prompt Copying**: Select multiple items using `Cmd+Click`, `Shift+Click`, or mouse drag. The copy button transforms into **«Copy Combined (N)»** (or press `Cmd+C`), joining selected fragments in chronological order with space separation into a single, cohesive prompt ready to paste into LLMs.
+  - **Multi-Selection & Combined Prompt Copying**: Select multiple items using `Cmd+Click`, `Shift+Click`, or mouse drag. The copy button transforms into **«Copy Combined (N)»** (or press `Cmd+C`), reversing the display order to natural chronological order (oldest to newest) and joining selected fragments with newlines (`\n`) into a structured, cohesive prompt ready to paste into LLMs.
   - **Instant Search**: Filter through long histories with real-time text matching.
 
 ### 7. Diagnostics & Logging (`Logger.swift`)

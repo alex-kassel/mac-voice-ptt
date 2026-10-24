@@ -273,7 +273,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         if originalIndexes.count == 1 {
             _ = HistoryManager.shared.copyToClipboard(index: originalIndexes[0])
         } else {
-            _ = HistoryManager.shared.copyCombined(indexes: originalIndexes, separator: " ")
+            _ = HistoryManager.shared.copyCombined(indexes: originalIndexes, separator: "\n")
         }
     }
 

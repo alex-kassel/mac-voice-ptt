@@ -117,7 +117,7 @@ final class HistoryManager {
         return true
     }
 
-    func copyCombined(indexes: [Int], separator: String = " ") -> String? {
+    func copyCombined(indexes: [Int], separator: String = "\n") -> String? {
         lock.lock()
         defer { lock.unlock() }
 
