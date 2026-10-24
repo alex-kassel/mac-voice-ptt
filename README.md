@@ -103,11 +103,23 @@ mac-voice-ptt/
 
 ### 5. Floating HUD Overlay (`OverlayPanel.swift`)
 - Subclass of `NSPanel` with style masks `[.borderless, .nonactivatingPanel]`.
-- Level set to `.floating`, collection behavior includes `.canJoinAllSpaces` and `.stationary`.
-- Positioned in the top-right corner of the active display, just below the menu bar.
+- Level set to `kCGAssistiveTechHighWindowLevel` (1500), collection behavior includes `[.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]`. This guarantees the HUD floats above all applications, full-screen spaces, and modal Electron dialogs without stealing key focus.
+- Cursor tracking via `NSEvent.mouseLocation` automatically positions the overlay in the top-right corner of the active display where the user is working.
 - Renders a translucent dark background (alpha 0.90), a pulsing red recording indicator with soft glow, and a monospaced elapsed timer (`00:00`).
 
-### 6. Single-Instance Protection (`main.swift`)
+### 6. Recent Transcriptions History (`HistoryManager.swift`)
+- Automatically saves the last 5 transcribed snippets to `~/.dictaphone/history.json`.
+- Accessible via the **Recent Transcriptions ▸** menu bar submenu.
+- Clicking any history entry instantly copies the full text to the macOS clipboard and presents a native notification banner.
+- Includes a **Clear History** action to remove stored snippets.
+
+### 7. Diagnostics & Logging (`Logger.swift`)
+- Thread-safe persistent file logger writing to `~/.dictaphone/dictaphone.log`.
+- Direct access via the **Open Log File** menu bar item.
+- Automatic 2 MB log rotation (`dictaphone.log` -> `dictaphone.log.1`).
+- Clean session boundaries with empty line dividers and quoted transcription output.
+
+### 8. Single-Instance Protection (`main.swift`)
 - Uses kernel file locking via `fcntl.flock(fd, LOCK_EX | LOCK_NB)` on `~/.dictaphone/dictaphone.pid`.
 - Immune to reboot PID reuse: when a process exits or system shuts down, the kernel automatically releases all file locks. Old PID files will never block startup.
 
