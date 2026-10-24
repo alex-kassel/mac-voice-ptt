@@ -5,7 +5,7 @@ final class OverlayPanel: NSPanel {
     private let containerView: NSView
     private let dotView: NSView
     private let timerLabel: NSTextField
-    private var timer: Timer?
+    private var timerSource: DispatchSourceTimer?
     private var startTime: Date?
     private var pulseOn = true
 
@@ -114,22 +114,24 @@ final class OverlayPanel: NSPanel {
     }
 
     private func startTimer() {
+        stopTimer()
         startTime = Date()
         timerLabel.stringValue = "00:00"
         pulseOn = true
         dotView.layer?.opacity = 1.0
 
-        stopTimer()
-        let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 0.25, repeating: 0.25)
+        timer.setEventHandler { [weak self] in
             self?.tick()
         }
-        RunLoop.main.add(t, forMode: .common)
-        self.timer = t
+        timer.resume()
+        self.timerSource = timer
     }
 
     private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
+        timerSource?.cancel()
+        timerSource = nil
         startTime = nil
     }
 
@@ -139,11 +141,8 @@ final class OverlayPanel: NSPanel {
         let mm = elapsed / 60
         let ss = elapsed % 60
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.timerLabel.stringValue = String(format: "%02d:%02d", mm, ss)
-            self.pulseOn.toggle()
-            self.dotView.layer?.opacity = self.pulseOn ? 1.0 : 0.35
-        }
+        timerLabel.stringValue = String(format: "%02d:%02d", mm, ss)
+        pulseOn.toggle()
+        dotView.layer?.opacity = pulseOn ? 1.0 : 0.35
     }
 }

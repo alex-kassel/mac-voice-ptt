@@ -14,6 +14,8 @@ Built completely in **Swift** with **zero external dependencies**, relying exclu
 
 - **Ultra-lightweight**: App bundle is **~280 KB** (compared to ~150+ MB for Python + virtualenv).
 - **Minimal memory footprint**: Runs quietly in the menu bar consuming **~15–25 MB RAM** (vs 120+ MB for Python).
+- **Transcriptions History Studio (`Cmd+H`)**: Native dedicated window featuring inline text editing, individual item deletion, and multi-selection with combined copying to assemble multi-part dictations into one unified prompt.
+- **High-Contrast Top-Right HUD**: Monospaced elapsed timer with glowing pulsing dot rendered in a dark graphite pill, guaranteed visible over light and dark themes and across all full-screen spaces.
 - **Zero latency**: Native Cocoa run loop, instant hotkey responsiveness, and immediate audio pipeline start.
 - **True macOS App Bundle**: Packaged into a standard `Dictaphone.app` and downloadable `Dictaphone.dmg`.
 - **System-level Permissions**: Accessibility and Microphone permissions attach directly to `Dictaphone.app` rather than terminal wrappers or Python binaries, preventing permission invalidation across updates.
@@ -57,6 +59,8 @@ mac-voice-ptt/
 │       ├── AudioRecorder.swift    # 16kHz WAV capture via AVFoundation (with prepare & padding)
 │       ├── Transcriber.swift      # Async URLSession multipart client for OpenAI API
 │       ├── OverlayPanel.swift     # Floating HUD overlay with live timer & pulsing dot
+│       ├── HistoryManager.swift   # History manager with JSON persistence, updates & combined copy
+│       ├── HistoryWindowController.swift # Interactive history studio window (inline edit, multi-select)
 │       ├── Paster.swift           # Synthetic Cmd+V paste with clipboard restoration
 │       ├── MenuBarController.swift# NSStatusItem menu bar UI (◉/●) and preferences
 │       ├── LaunchAtLoginManager.swift # Native login item registration via SMAppService
@@ -105,13 +109,17 @@ mac-voice-ptt/
 - Subclass of `NSPanel` with style masks `[.borderless, .nonactivatingPanel]`.
 - Level set to `kCGAssistiveTechHighWindowLevel` (1500), collection behavior includes `[.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]`. This guarantees the HUD floats above all applications, full-screen spaces, and modal Electron dialogs without stealing key focus.
 - Cursor tracking via `NSEvent.mouseLocation` automatically positions the overlay in the top-right corner of the active display where the user is working.
-- Renders a translucent dark background (alpha 0.90), a pulsing red recording indicator with soft glow, and a monospaced elapsed timer (`00:00`).
+- Renders an enforced dark high-contrast graphite pill (`#1a1a1f`, 95% opacity), pure white monospaced digits (18pt bold), and a glowing red recording indicator with a soft halo.
+- Powered by a GCD `DispatchSourceTimer` scheduled on the main thread for rock-solid, jitter-free timer increments (`00:01`, `00:02`...).
 
-### 6. Recent Transcriptions History (`HistoryManager.swift`)
-- Automatically saves the last 5 transcribed snippets to `~/.dictaphone/history.json`.
-- Accessible via the **Recent Transcriptions ▸** menu bar submenu.
-- Clicking any history entry instantly copies the full text to the macOS clipboard and presents a native notification banner.
-- Includes a **Clear History** action to remove stored snippets.
+### 6. Transcriptions History Studio (`HistoryManager.swift` & `HistoryWindowController.swift`)
+- Automatically saves up to 25 recent transcriptions (configurable up to 200 via `max_history_items` in config) to `~/.dictaphone/history.json`.
+- **Menu Bar Quick Access**: The 10 most recent entries are available directly in the **Recent Transcriptions ▸** submenu for one-click instant copying.
+- **Dedicated History Window (`Cmd+H`)**:
+  - **Inline Text Editing**: Double-click or edit any transcription text directly in the table cell. Changes auto-save on edit finish, turning past dictations into reusable prompt templates.
+  - **Single & Batch Deletion**: Remove unwanted entries with the row delete button (`✕`) or the `Backspace` / `Delete` key.
+  - **Multi-Selection & Combined Prompt Copying**: Select multiple items using `Cmd+Click`, `Shift+Click`, or mouse drag. The copy button transforms into **«Copy Combined (N)»** (or press `Cmd+C`), joining selected fragments in chronological order with space separation into a single, cohesive prompt ready to paste into LLMs.
+  - **Instant Search**: Filter through long histories with real-time text matching.
 
 ### 7. Diagnostics & Logging (`Logger.swift`)
 - Thread-safe persistent file logger writing to `~/.dictaphone/dictaphone.log`.
