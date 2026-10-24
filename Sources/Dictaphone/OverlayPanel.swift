@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 final class OverlayPanel: NSPanel {
-    private let visualEffect: NSVisualEffectView
+    private let containerView: NSView
     private let dotView: NSView
     private let timerLabel: NSTextField
     private var timer: Timer?
@@ -10,43 +10,45 @@ final class OverlayPanel: NSPanel {
     private var pulseOn = true
 
     init() {
-        let panelWidth: CGFloat = 160.0
-        let panelHeight: CGFloat = 44.0
+        let panelWidth: CGFloat = 136.0
+        let panelHeight: CGFloat = 38.0
         let contentRect = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
 
-        // 1. Native visual effect view (dark frosted glass HUD)
-        visualEffect = NSVisualEffectView(frame: contentRect)
-        visualEffect.material = .hudWindow
-        visualEffect.state = .active
-        visualEffect.wantsLayer = true
-        visualEffect.layer?.cornerRadius = panelHeight / 2.0
-        visualEffect.layer?.masksToBounds = true
-        visualEffect.layer?.borderWidth = 1.0
-        visualEffect.layer?.borderColor = NSColor(white: 0.35, alpha: 0.5).cgColor
+        // 1. Dark high-contrast background container (forced dark theme, never white)
+        containerView = NSView(frame: contentRect)
+        containerView.wantsLayer = true
+        containerView.layer?.backgroundColor = NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 0.95).cgColor
+        containerView.layer?.cornerRadius = 14.0
+        containerView.layer?.masksToBounds = true
+        containerView.layer?.borderWidth = 1.0
+        containerView.layer?.borderColor = NSColor(white: 0.30, alpha: 0.8).cgColor
 
-        // 2. Red recording dot
-        let dotSize: CGFloat = 12.0
+        // 2. Bright glowing red recording dot
+        let dotSize: CGFloat = 10.0
         let dotY = (panelHeight - dotSize) / 2.0
-        dotView = NSView(frame: NSRect(x: 22.0, y: dotY, width: dotSize, height: dotSize))
+        dotView = NSView(frame: NSRect(x: 18.0, y: dotY, width: dotSize, height: dotSize))
         dotView.wantsLayer = true
         dotView.layer?.cornerRadius = dotSize / 2.0
         dotView.layer?.backgroundColor = NSColor.systemRed.cgColor
         dotView.layer?.shadowColor = NSColor.systemRed.cgColor
         dotView.layer?.shadowRadius = 4.0
-        dotView.layer?.shadowOpacity = 0.8
+        dotView.layer?.shadowOpacity = 0.9
         dotView.layer?.shadowOffset = .zero
-        visualEffect.addSubview(dotView)
+        containerView.addSubview(dotView)
 
-        // 3. Crisp white monospaced timer label
-        let labelX: CGFloat = 44.0
-        let labelWidth: CGFloat = panelWidth - labelX - 16.0
-        let labelY = (panelHeight - 24.0) / 2.0
+        // 3. Crisp, 100% white monospaced timer label (pure white on solid dark)
+        let labelX: CGFloat = 38.0
+        let labelWidth: CGFloat = panelWidth - labelX - 12.0
+        let labelY = (panelHeight - 22.0) / 2.0
         timerLabel = NSTextField(labelWithString: "00:00")
-        timerLabel.frame = NSRect(x: labelX, y: labelY, width: labelWidth, height: 24.0)
-        timerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 18.0, weight: .semibold)
+        timerLabel.frame = NSRect(x: labelX, y: labelY, width: labelWidth, height: 22.0)
+        timerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 18.0, weight: .bold)
         timerLabel.textColor = .white
+        timerLabel.backgroundColor = .clear
+        timerLabel.isBezeled = false
+        timerLabel.isEditable = false
         timerLabel.alignment = .left
-        visualEffect.addSubview(timerLabel)
+        containerView.addSubview(timerLabel)
 
         super.init(
             contentRect: contentRect,
@@ -55,7 +57,10 @@ final class OverlayPanel: NSPanel {
             defer: false
         )
 
-        // System-level HUD Window layer (1500) floats over all apps, spaces, and full-screen windows
+        // Enforce dark appearance on the panel
+        self.appearance = NSAppearance(named: .darkAqua)
+
+        // Level 1500 (assistiveTechHighWindow) floats above all spaces, full-screen windows, and apps
         self.level = NSWindow.Level(Int(CGWindowLevelForKey(.assistiveTechHighWindow)))
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         self.isOpaque = false
@@ -65,7 +70,7 @@ final class OverlayPanel: NSPanel {
         self.hidesOnDeactivate = false
         self.ignoresMouseEvents = true
 
-        self.contentView = visualEffect
+        self.contentView = containerView
     }
 
     override var canBecomeKey: Bool { return false }
@@ -77,7 +82,7 @@ final class OverlayPanel: NSPanel {
             self.startTimer()
             self.alphaValue = 1.0
             self.orderFrontRegardless()
-            Logger.log("[OverlayPanel] HUD Pill visible at Top-Center (level=%ld)", self.level.rawValue)
+            Logger.log("[OverlayPanel] HUD timer ordered front in top-right corner (level=%ld)", self.level.rawValue)
         }
     }
 
@@ -89,7 +94,7 @@ final class OverlayPanel: NSPanel {
     }
 
     private func updatePosition() {
-        // Track the screen where the mouse / user focus resides
+        // Track the screen containing the cursor
         let mouseLoc = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) })
             ?? NSScreen.main
@@ -97,12 +102,13 @@ final class OverlayPanel: NSPanel {
 
         guard let targetScreen = screen else { return }
         let visibleFrame = targetScreen.visibleFrame
-        let panelWidth: CGFloat = 160.0
-        let panelHeight: CGFloat = 44.0
+        let panelWidth: CGFloat = 136.0
+        let panelHeight: CGFloat = 38.0
+        let margin: CGFloat = 20.0
 
-        // Center horizontally at the top of the active screen (Dynamic Island / System HUD location)
-        let originX = visibleFrame.midX - (panelWidth / 2.0)
-        let originY = visibleFrame.maxY - panelHeight - 24.0
+        // Top-Right corner below menu bar
+        let originX = visibleFrame.maxX - panelWidth - margin
+        let originY = visibleFrame.maxY - panelHeight - margin
 
         self.setFrame(NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight), display: true)
     }
@@ -111,10 +117,10 @@ final class OverlayPanel: NSPanel {
         startTime = Date()
         timerLabel.stringValue = "00:00"
         pulseOn = true
-        updatePulse()
+        dotView.layer?.opacity = 1.0
 
         stopTimer()
-        let t = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             self?.tick()
         }
         RunLoop.main.add(t, forMode: .common)
@@ -132,13 +138,12 @@ final class OverlayPanel: NSPanel {
         let elapsed = Int(Date().timeIntervalSince(start))
         let mm = elapsed / 60
         let ss = elapsed % 60
-        timerLabel.stringValue = String(format: "%02d:%02d", mm, ss)
 
-        pulseOn.toggle()
-        updatePulse()
-    }
-
-    private func updatePulse() {
-        dotView.layer?.opacity = pulseOn ? 1.0 : 0.4
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.timerLabel.stringValue = String(format: "%02d:%02d", mm, ss)
+            self.pulseOn.toggle()
+            self.dotView.layer?.opacity = self.pulseOn ? 1.0 : 0.35
+        }
     }
 }
