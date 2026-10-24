@@ -47,9 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
     // MARK: - HotkeyManagerDelegate
 
     func hotkeyDidStartRecording() {
-        Logger.log("[AppDelegate] Starting audio recorder...")
+        let hotkeyTitle = Hotkey(rawValue: ConfigManager.shared.config.hotkey)?.title ?? "Right ⌘"
+        Logger.startSession(hotkey: hotkeyTitle)
         guard recorder.start() else {
-            Logger.log("[AppDelegate] Failed to start audio recorder!")
+            Logger.endSessionError(error: "Failed to initialize and start audio input stream.")
             return
         }
         overlayPanel.show()
@@ -61,12 +62,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         menuBarController.setRecording(false)
 
         guard let fileURL = recorder.stop() else {
-            Logger.log("[AppDelegate] Recording stopped: audio discarded (too short or empty)")
+            Logger.endSessionSilent()
             return
         }
 
         let language = ConfigManager.shared.config.language
-        Logger.log("[AppDelegate] Audio captured at: %@. Requesting transcription (lang: %@)...", fileURL.path, language)
+        Logger.log("[AudioRecorder] Audio captured (wav: %@). Requesting transcription (lang: %@)...", fileURL.lastPathComponent, language)
 
         Task {
             do {
@@ -75,17 +76,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
 
                 if !text.isEmpty {
                     HistoryManager.shared.add(text: text)
-                    let preview = text.count > 60 ? String(text.prefix(60)) + "..." : text
-                    Logger.log("[AppDelegate] Transcription success (%ld chars): '%@'. Pasting...", text.count, preview)
+                    Logger.endSessionSuccess(text: text, charsCount: text.count)
                     await MainActor.run {
                         Paster.shared.paste(text: text)
                     }
                 } else {
-                    Logger.log("[AppDelegate] Transcription returned empty text (audio was silent or below voice threshold).")
+                    Logger.endSessionSilent()
                 }
             } catch {
                 try? FileManager.default.removeItem(at: fileURL)
-                Logger.log("[AppDelegate] Transcription failed: %@", error.localizedDescription)
+                Logger.endSessionError(error: error.localizedDescription)
                 await MainActor.run {
                     self.showErrorNotification(error.localizedDescription)
                 }
@@ -94,10 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
     }
 
     func hotkeyDidCancelRecording() {
-        Logger.log("[AppDelegate] Recording cancelled.")
         overlayPanel.hide()
         menuBarController.setRecording(false)
         recorder.cancel()
+        Logger.endSessionCancelled(reason: "Cancelled by user (other key pressed or deactivated)")
     }
 
     // MARK: - MenuBarControllerDelegate

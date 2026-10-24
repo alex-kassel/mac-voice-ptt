@@ -36,6 +36,51 @@ final class Logger {
         shared.write(formatted)
     }
 
+    static func writeRaw(_ rawText: String) {
+        shared.queue.async {
+            shared.rotateIfNeeded()
+            guard let handle = shared.fileHandle, let data = rawText.data(using: .utf8) else { return }
+            handle.write(data)
+        }
+    }
+
+    /// Outputs an empty line preceding every new dictation session and prints a distinct start banner
+    static func startSession(hotkey: String) {
+        writeRaw("\n")
+        log("--------------------------------------------------------------------------------")
+        log(">>> [DICTATION SESSION START] Hotkey: %@", hotkey)
+    }
+
+    /// Prints a prominent success banner with the transcribed text and auto-paste status
+    static func endSessionSuccess(text: String, charsCount: Int) {
+        log("[Transcription] Result (%ld chars):", charsCount)
+        log(">>> \"%@\"", text)
+        log("[Paster] Synthetic Cmd+V dispatched to active application.")
+        log("-------------------- [DICTATION SESSION FINISHED] --------------------\n")
+    }
+
+    /// Prints a clean notice when audio was silent or below threshold
+    static func endSessionSilent() {
+        log("[Transcription] Audio was silent or below voice threshold (empty text).")
+        log("-------------------- [DICTATION SESSION DISCARDED] --------------------\n")
+    }
+
+    /// Prints a clean notice when recording was cancelled by user
+    static func endSessionCancelled(reason: String) {
+        log("[Dictation] Cancelled: %@", reason)
+        log("-------------------- [DICTATION SESSION CANCELLED] --------------------\n")
+    }
+
+    /// Prints a prominent failure banner
+    static func endSessionError(error: String) {
+        writeRaw("\n")
+        log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        log("!!! [DICTATION FAILED: ERROR OCCURRED] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        log("! Error: %@", error)
+        log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+    }
+
     private func write(_ message: String) {
         let timestamp = dateFormatter.string(from: Date())
         let line = "[\(timestamp)] \(message)\n"
