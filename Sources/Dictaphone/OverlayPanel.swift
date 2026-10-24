@@ -120,8 +120,8 @@ final class OverlayPanel: NSPanel {
             defer: false
         )
 
-        self.level = .floating
-        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        self.level = .statusBar
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
@@ -147,8 +147,13 @@ final class OverlayPanel: NSPanel {
     }
 
     private func updatePosition() {
-        guard let screen = NSScreen.main else { return }
-        let visibleFrame = screen.visibleFrame
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+
+        guard let targetScreen = screen else { return }
+        let visibleFrame = targetScreen.visibleFrame
         let panelWidth: CGFloat = 120.0
         let panelHeight: CGFloat = 38.0
         let margin: CGFloat = 20.0
