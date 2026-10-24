@@ -141,12 +141,22 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         // Refresh Recent Transcriptions Submenu
         historyMenu.removeAllItems()
         let history = HistoryManager.shared.getHistory()
+
+        // 1. Show All History Window action
+        let showAllItem = NSMenuItem(title: "Show All History (\(history.count))...", action: #selector(openHistoryWindow), keyEquivalent: "h")
+        showAllItem.target = self
+        historyMenu.addItem(showAllItem)
+        historyMenu.addItem(NSMenuItem.separator())
+
         if history.isEmpty {
             let emptyItem = NSMenuItem(title: "No Recent Transcriptions", action: nil, keyEquivalent: "")
             emptyItem.isEnabled = false
             historyMenu.addItem(emptyItem)
         } else {
-            for (idx, text) in history.enumerated() {
+            // Show up to the first 10 items directly in menu for fast access
+            let displayCount = min(history.count, 10)
+            for idx in 0..<displayCount {
+                let text = history[idx]
                 let preview = text.count > 48 ? String(text.prefix(48)) + "..." : text
                 let item = NSMenuItem(title: "\(idx + 1). \(preview)", action: #selector(copyHistoryItem(_:)), keyEquivalent: "")
                 item.target = self
@@ -159,6 +169,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             clearItem.target = self
             historyMenu.addItem(clearItem)
         }
+    }
+
+    @objc private func openHistoryWindow() {
+        HistoryWindowController.shared.showHistory()
     }
 
     @objc private func copyHistoryItem(_ sender: NSMenuItem) {

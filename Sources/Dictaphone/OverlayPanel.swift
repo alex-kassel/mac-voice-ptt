@@ -1,118 +1,53 @@
 import Foundation
 import AppKit
 
-final class OverlayView: NSView {
-    private var startTime: Date?
-    private var timerText = "00:00"
-    private var pulseOn = true
-    private var timer: Timer?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        wantsLayer = true
-    }
-
-    func startTimer() {
-        startTime = Date()
-        timerText = "00:00"
-        pulseOn = true
-        needsDisplay = true
-
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.updateTick()
-        }
-    }
-
-    func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-        startTime = nil
-    }
-
-    private func updateTick() {
-        guard let start = startTime else { return }
-        let elapsed = Int(Date().timeIntervalSince(start))
-        let mm = elapsed / 60
-        let ss = elapsed % 60
-        timerText = String(format: "%02d:%02d", mm, ss)
-        pulseOn.toggle()
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-
-        let bounds = self.bounds
-        let height = bounds.size.height
-
-        // Background rounded rectangle
-        let bgPath = NSBezierPath(roundedRect: bounds, xRadius: 14.0, yRadius: 14.0)
-        NSColor(red: 0.08, green: 0.08, blue: 0.08, alpha: 0.90).set()
-        bgPath.fill()
-
-        // Border
-        NSColor(red: 0.25, green: 0.25, blue: 0.25, alpha: 0.60).set()
-        bgPath.lineWidth = 1.0
-        bgPath.stroke()
-
-        // Red recording dot
-        let dotRadius: CGFloat = 6.0
-        let dotCenter = NSPoint(x: 26.0, y: height / 2.0)
-        let dotRect = NSRect(
-            x: dotCenter.x - dotRadius,
-            y: dotCenter.y - dotRadius,
-            width: dotRadius * 2,
-            height: dotRadius * 2
-        )
-        let dotPath = NSBezierPath(ovalIn: dotRect)
-
-        if pulseOn {
-            NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 0.95).set()
-        } else {
-            NSColor(red: 0.8, green: 0.18, blue: 0.15, alpha: 0.80).set()
-        }
-        dotPath.fill()
-
-        // Soft glow around the dot
-        let glowRadius = dotRadius + 3.0
-        let glowRect = NSRect(
-            x: dotCenter.x - glowRadius,
-            y: dotCenter.y - glowRadius,
-            width: glowRadius * 2,
-            height: glowRadius * 2
-        )
-        let glowPath = NSBezierPath(ovalIn: glowRect)
-        NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: pulseOn ? 0.25 : 0.10).set()
-        glowPath.fill()
-
-        // Monospaced Timer text
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 20.0, weight: .regular)
-        let textAttrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor(white: 0.95, alpha: 1.0)
-        ]
-
-        let attrString = NSAttributedString(string: timerText, attributes: textAttrs)
-        let textSize = attrString.size()
-        let textPoint = NSPoint(
-            x: 42.0,
-            y: (height - textSize.height) / 2.0 - 0.5
-        )
-        attrString.draw(at: textPoint)
-    }
-}
-
 final class OverlayPanel: NSPanel {
-    private let overlayView = OverlayView()
+    private let visualEffect: NSVisualEffectView
+    private let dotView: NSView
+    private let timerLabel: NSTextField
+    private var timer: Timer?
+    private var startTime: Date?
+    private var pulseOn = true
 
     init() {
-        let contentRect = NSRect(x: 0, y: 0, width: 120, height: 38)
+        let panelWidth: CGFloat = 160.0
+        let panelHeight: CGFloat = 44.0
+        let contentRect = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+
+        // 1. Native visual effect view (dark frosted glass HUD)
+        visualEffect = NSVisualEffectView(frame: contentRect)
+        visualEffect.material = .hudWindow
+        visualEffect.state = .active
+        visualEffect.wantsLayer = true
+        visualEffect.layer?.cornerRadius = panelHeight / 2.0
+        visualEffect.layer?.masksToBounds = true
+        visualEffect.layer?.borderWidth = 1.0
+        visualEffect.layer?.borderColor = NSColor(white: 0.35, alpha: 0.5).cgColor
+
+        // 2. Red recording dot
+        let dotSize: CGFloat = 12.0
+        let dotY = (panelHeight - dotSize) / 2.0
+        dotView = NSView(frame: NSRect(x: 22.0, y: dotY, width: dotSize, height: dotSize))
+        dotView.wantsLayer = true
+        dotView.layer?.cornerRadius = dotSize / 2.0
+        dotView.layer?.backgroundColor = NSColor.systemRed.cgColor
+        dotView.layer?.shadowColor = NSColor.systemRed.cgColor
+        dotView.layer?.shadowRadius = 4.0
+        dotView.layer?.shadowOpacity = 0.8
+        dotView.layer?.shadowOffset = .zero
+        visualEffect.addSubview(dotView)
+
+        // 3. Crisp white monospaced timer label
+        let labelX: CGFloat = 44.0
+        let labelWidth: CGFloat = panelWidth - labelX - 16.0
+        let labelY = (panelHeight - 24.0) / 2.0
+        timerLabel = NSTextField(labelWithString: "00:00")
+        timerLabel.frame = NSRect(x: labelX, y: labelY, width: labelWidth, height: 24.0)
+        timerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 18.0, weight: .semibold)
+        timerLabel.textColor = .white
+        timerLabel.alignment = .left
+        visualEffect.addSubview(timerLabel)
+
         super.init(
             contentRect: contentRect,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -120,7 +55,7 @@ final class OverlayPanel: NSPanel {
             defer: false
         )
 
-        // Use assistiveTechHighWindow (level 1500) so HUD overlay floats over ALL apps, including full-screen Electron / Antigravity windows
+        // System-level HUD Window layer (1500) floats over all apps, spaces, and full-screen windows
         self.level = NSWindow.Level(Int(CGWindowLevelForKey(.assistiveTechHighWindow)))
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         self.isOpaque = false
@@ -130,7 +65,7 @@ final class OverlayPanel: NSPanel {
         self.hidesOnDeactivate = false
         self.ignoresMouseEvents = true
 
-        self.contentView = overlayView
+        self.contentView = visualEffect
     }
 
     override var canBecomeKey: Bool { return false }
@@ -139,23 +74,22 @@ final class OverlayPanel: NSPanel {
     func show() {
         DispatchQueue.main.async {
             self.updatePosition()
+            self.startTimer()
             self.alphaValue = 1.0
-            self.setIsVisible(true)
-            self.overlayView.startTimer()
             self.orderFrontRegardless()
-            Logger.log("[OverlayPanel] Overlay visible at top-level (level=%ld)", self.level.rawValue)
+            Logger.log("[OverlayPanel] HUD Pill visible at Top-Center (level=%ld)", self.level.rawValue)
         }
     }
 
     func hide() {
         DispatchQueue.main.async {
-            self.overlayView.stopTimer()
+            self.stopTimer()
             self.orderOut(nil)
         }
     }
 
     private func updatePosition() {
-        // Track the screen where the cursor / mouse currently resides
+        // Track the screen where the mouse / user focus resides
         let mouseLoc = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) })
             ?? NSScreen.main
@@ -163,13 +97,48 @@ final class OverlayPanel: NSPanel {
 
         guard let targetScreen = screen else { return }
         let visibleFrame = targetScreen.visibleFrame
-        let panelWidth: CGFloat = 120.0
-        let panelHeight: CGFloat = 38.0
-        let margin: CGFloat = 20.0
+        let panelWidth: CGFloat = 160.0
+        let panelHeight: CGFloat = 44.0
 
-        let originX = visibleFrame.maxX - panelWidth - margin
-        let originY = visibleFrame.maxY - panelHeight - margin
+        // Center horizontally at the top of the active screen (Dynamic Island / System HUD location)
+        let originX = visibleFrame.midX - (panelWidth / 2.0)
+        let originY = visibleFrame.maxY - panelHeight - 24.0
 
         self.setFrame(NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight), display: true)
+    }
+
+    private func startTimer() {
+        startTime = Date()
+        timerLabel.stringValue = "00:00"
+        pulseOn = true
+        updatePulse()
+
+        stopTimer()
+        let t = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
+            self?.tick()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        self.timer = t
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+        startTime = nil
+    }
+
+    private func tick() {
+        guard let start = startTime else { return }
+        let elapsed = Int(Date().timeIntervalSince(start))
+        let mm = elapsed / 60
+        let ss = elapsed % 60
+        timerLabel.stringValue = String(format: "%02d:%02d", mm, ss)
+
+        pulseOn.toggle()
+        updatePulse()
+    }
+
+    private func updatePulse() {
+        dotView.layer?.opacity = pulseOn ? 1.0 : 0.4
     }
 }

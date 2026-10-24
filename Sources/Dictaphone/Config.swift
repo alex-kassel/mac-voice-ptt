@@ -5,6 +5,7 @@ struct AppConfig: Codable {
     var language: String = "auto"
     var active: Bool = true
     var apiKey: String? = nil
+    var maxHistoryItems: Int = 25
 
     static let validHotkeys: Set<String> = ["cmd_r", "alt_r", "ctrl_r"]
     static let validLanguages: Set<String> = ["auto", "ru", "de", "en"]

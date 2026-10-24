@@ -8,7 +8,9 @@ final class HistoryManager {
     private let fileURL: URL
     private let lock = NSLock()
     private var history: [String] = []
-    private let maxHistoryCount = 5
+    private var maxHistoryCount: Int {
+        return max(5, ConfigManager.shared.config.maxHistoryItems)
+    }
 
     private init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
