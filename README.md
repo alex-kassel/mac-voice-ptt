@@ -14,7 +14,8 @@ Built completely in **Swift** with **zero external dependencies**, relying exclu
 
 - **Ultra-lightweight**: App bundle is **~280 KB** (compared to ~150+ MB for Python + virtualenv).
 - **Minimal memory footprint**: Runs quietly in the menu bar consuming **~15–25 MB RAM** (vs 120+ MB for Python).
-- **Transcriptions History Studio (`Cmd+H`)**: Native dedicated window featuring inline text editing, individual item deletion, and multi-selection with combined copying to assemble multi-part dictations into one unified prompt.
+- **Transcriptions History Studio (`Cmd+H`)**: Native dedicated window featuring dynamic row expansion on click, inline editing, multi-select prompt stitching, and tactile copy confirmation.
+- **Dedicated Preferences Window (`Cmd+,`)**: Native settings modal to customize hotkeys, languages, OpenAI API keys, history capacity, and window opening focus behavior.
 - **High-Contrast Top-Right HUD**: Monospaced elapsed timer with glowing pulsing dot rendered in a dark graphite pill, guaranteed visible over light and dark themes and across all full-screen spaces.
 - **Zero latency**: Native Cocoa run loop, instant hotkey responsiveness, and immediate audio pipeline start.
 - **True macOS App Bundle**: Packaged into a standard `Dictaphone.app` and downloadable `Dictaphone.dmg`.
@@ -61,6 +62,7 @@ mac-voice-ptt/
 │       ├── OverlayPanel.swift     # Floating HUD overlay with live timer & pulsing dot
 │       ├── HistoryManager.swift   # History manager with JSON persistence, updates & combined copy
 │       ├── HistoryWindowController.swift # Interactive history studio window (inline edit, multi-select)
+│       ├── PreferencesWindowController.swift # Dedicated native preferences window (Cmd+,)
 │       ├── Paster.swift           # Synthetic Cmd+V paste with clipboard restoration
 │       ├── MenuBarController.swift# NSStatusItem menu bar UI (◉/●) and preferences
 │       ├── LaunchAtLoginManager.swift # Native login item registration via SMAppService
@@ -113,21 +115,34 @@ mac-voice-ptt/
 - Powered by a GCD `DispatchSourceTimer` scheduled on the main thread for rock-solid, jitter-free timer increments (`00:01`, `00:02`...).
 
 ### 6. Transcriptions History Studio (`HistoryManager.swift` & `HistoryWindowController.swift`)
-- Automatically saves up to 25 recent transcriptions (configurable up to 200 via `max_history_items` in config) to `~/.dictaphone/history.json`.
+- Automatically saves up to 25 recent transcriptions (configurable from 5 to 200 via Preferences) to `~/.dictaphone/history.json`.
 - **Menu Bar Quick Access**: The 10 most recent entries are available directly in the **Recent Transcriptions ▸** submenu for one-click instant copying.
 - **Dedicated History Window (`Cmd+H`)**:
-  - **Inline Text Editing**: Double-click or edit any transcription text directly in the table cell. Changes auto-save on edit finish, turning past dictations into reusable prompt templates.
-  - **Single & Batch Deletion**: Remove unwanted entries with the row delete button (`✕`) or the `Backspace` / `Delete` key.
+  - **Dynamic Row Expansion**: Unselected rows remain compact single-line entries (38pt) with row numbers, text, and delete buttons aligned on the exact same baseline. Selecting a row smoothly expands it to display the full multi-line text with word wrapping.
+  - **Inline Text Editing**: Double-click or edit any transcription text directly in the table cell with high contrast in both light and dark modes. Changes auto-save on edit finish, turning past dictations into reusable prompt templates.
+  - **Single & Batch Deletion with Confirmation**: Remove unwanted entries with the row delete button (`✕`) or the `Backspace` / `Delete` key; destructive deletions require confirmation via native macOS sheet alerts.
   - **Multi-Selection & Combined Prompt Copying**: Select multiple items using `Cmd+Click`, `Shift+Click`, or mouse drag. The copy button transforms into **«Copy Combined (N)»** (or press `Cmd+C`), reversing the display order to natural chronological order (oldest to newest) and joining selected fragments with newlines (`\n`) into a structured, cohesive prompt ready to paste into LLMs.
+  - **Visual & Haptic Copy Feedback**: Clicking copy triggers a green checkmark animation (`✓ Copied!`) on the button alongside trackpad haptic pulse feedback.
   - **Instant Search**: Filter through long histories with real-time text matching.
 
-### 7. Diagnostics & Logging (`Logger.swift`)
+### 7. Dedicated Preferences Window (`PreferencesWindowController.swift`)
+- Accessible via the menu bar item **Preferences...** or standard shortcut **`Cmd+,`**.
+- **Push-to-Talk Hotkey**: Switch between Right Command ⌘, Right Option ⌥, and Right Control ⌃.
+- **Speech Language**: Toggle between Auto-detection, Russian, German, and English.
+- **OpenAI API Key**: Secure input field with Show/Hide toggle; synchronizes automatically with `config.json` and `~/.dictaphone/.env`.
+- **Max Saved History**: Adjustable stepper from 5 to 200 items.
+- **On History Window Open Focus**:
+  - `First Item (Active & Expanded)`: Focuses the table view immediately, highlighting the latest entry in vibrant system blue with expanded text.
+  - `Search Field (Ready for typing)`: Focuses the search bar immediately with no rows pre-selected, ready for quick filtering.
+- **System Integration**: One-click toggles for "Launch at Login" (`SMAppService`) and active daemon state.
+
+### 8. Diagnostics & Logging (`Logger.swift`)
 - Thread-safe persistent file logger writing to `~/.dictaphone/dictaphone.log`.
 - Direct access via the **Open Log File** menu bar item.
 - Automatic 2 MB log rotation (`dictaphone.log` -> `dictaphone.log.1`).
 - Clean session boundaries with empty line dividers and quoted transcription output.
 
-### 8. Single-Instance Protection (`main.swift`)
+### 9. Single-Instance Protection (`main.swift`)
 - Uses kernel file locking via `fcntl.flock(fd, LOCK_EX | LOCK_NB)` on `~/.dictaphone/dictaphone.pid`.
 - Immune to reboot PID reuse: when a process exits or system shuts down, the kernel automatically releases all file locks. Old PID files will never block startup.
 
