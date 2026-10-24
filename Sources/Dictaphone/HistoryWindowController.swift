@@ -181,6 +181,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     private var countLabel: NSTextField!
     private var copyBtn: NSButton!
     private var deleteSelectedBtn: NSButton!
+    private var copyFeedbackTimer: Timer?
 
     private var allItems: [String] = []
     private var filteredItems: [(index: Int, text: String)] = []
@@ -287,7 +288,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         contentView.addSubview(deleteSelectedBtn)
 
         copyBtn = NSButton(title: "Copy to Clipboard", target: self, action: #selector(copySelectedClicked))
-        copyBtn.frame = NSRect(x: bounds.width - 240, y: 14, width: 145, height: 28)
+        copyBtn.frame = NSRect(x: bounds.width - 250, y: 14, width: 155, height: 28)
         copyBtn.bezelStyle = .rounded
         copyBtn.isEnabled = false
         copyBtn.autoresizingMask = [.minXMargin, .maxYMargin]
@@ -429,6 +430,9 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         deleteSelectedBtn.isEnabled = count > 0
         copyBtn.isEnabled = count > 0
 
+        // If currently showing copy feedback animation, don't overwrite the title
+        guard copyFeedbackTimer == nil else { return }
+
         if count == 0 {
             copyBtn.title = "Copy to Clipboard"
             deleteSelectedBtn.title = "Delete"
@@ -438,6 +442,28 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         } else {
             copyBtn.title = "Copy Combined (\(count))"
             deleteSelectedBtn.title = "Delete (\(count))"
+        }
+    }
+
+    private func showCopySuccessFeedback(count: Int) {
+        copyFeedbackTimer?.invalidate()
+
+        let successTitle = count > 1 ? "✓ Copied (\(count))!" : "✓ Copied!"
+        copyBtn.title = successTitle
+        if #available(macOS 11.0, *) {
+            copyBtn.contentTintColor = .systemGreen
+        }
+
+        // Tactile haptic feedback on supported trackpads
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+
+        copyFeedbackTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            self.copyFeedbackTimer = nil
+            if #available(macOS 11.0, *) {
+                self.copyBtn.contentTintColor = nil
+            }
+            self.updateSelectionUI()
         }
     }
 
@@ -452,10 +478,15 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
             }
         }
 
+        let copied: Bool
         if originalIndexes.count == 1 {
-            _ = HistoryManager.shared.copyToClipboard(index: originalIndexes[0])
+            copied = HistoryManager.shared.copyToClipboard(index: originalIndexes[0])
         } else {
-            _ = HistoryManager.shared.copyCombined(indexes: originalIndexes, separator: "\n")
+            copied = HistoryManager.shared.copyCombined(indexes: originalIndexes, separator: "\n") != nil
+        }
+
+        if copied {
+            showCopySuccessFeedback(count: originalIndexes.count)
         }
     }
 
