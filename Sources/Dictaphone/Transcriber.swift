@@ -18,7 +18,7 @@ enum TranscriberError: LocalizedError {
 }
 
 final class Transcriber {
-    private let session: URLSession
+    private var session: URLSession
     private let promptText = (
         "The speaker alternates between Russian, German, and English. " +
         "If it sounds Russian, it is Russian. " +
@@ -28,9 +28,21 @@ final class Transcriber {
     )
 
     init() {
+        self.session = Transcriber.makeSession()
+    }
+
+    private static func makeSession() -> URLSession {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 45.0
-        self.session = URLSession(configuration: config)
+        config.timeoutIntervalForRequest = 35.0
+        config.timeoutIntervalForResource = 90.0
+        config.httpMaximumConnectionsPerHost = 4
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }
+
+    private func resetSession() {
+        session.invalidateAndCancel()
+        session = Transcriber.makeSession()
     }
 
     func transcribe(fileURL: URL, language: String) async throws -> String {
@@ -40,6 +52,90 @@ final class Transcriber {
 
         let audioData = try Data(contentsOf: fileURL)
         let endpoint = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
+        let ext = fileURL.pathExtension.isEmpty ? "m4a" : fileURL.pathExtension.lowercased()
+        let mimeType = (ext == "wav") ? "audio/wav" : "audio/m4a"
+        let filename = "audio.\(ext)"
+
+        let maxAttempts = 3
+        var lastError: Error?
+
+        for attempt in 1...maxAttempts {
+            do {
+                if attempt > 1 {
+                    Logger.log("[Transcriber] Retrying transcription (attempt %d of %d)...", attempt, maxAttempts)
+                }
+                return try await executeUpload(
+                    endpoint: endpoint,
+                    apiKey: apiKey,
+                    audioData: audioData,
+                    filename: filename,
+                    mimeType: mimeType,
+                    language: language
+                )
+            } catch {
+                lastError = error
+                Logger.log("[Transcriber] Attempt %d failed: %@", attempt, error.localizedDescription)
+
+                if !isRetryable(error: error) {
+                    throw error
+                }
+
+                if attempt < maxAttempts {
+                    if isConnectionDrop(error: error) {
+                        Logger.log("[Transcriber] Connection lost on attempt %d. Re-creating URLSession connection pool.", attempt)
+                        resetSession()
+                    }
+                    let backoff = Double(attempt) * 1.0
+                    try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                }
+            }
+        }
+
+        throw lastError ?? TranscriberError.networkError(NSError(domain: "Transcriber", code: -1, userInfo: [NSLocalizedDescriptionKey: "Transcription failed after \(maxAttempts) attempts."]))
+    }
+
+    private func isRetryable(error: Error) -> Bool {
+        if let txErr = error as? TranscriberError {
+            switch txErr {
+            case .missingApiKey:
+                return false
+            case .invalidResponse(let statusCode, _):
+                return statusCode == 429 || statusCode >= 500
+            case .networkError:
+                return true
+            }
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorNetworkConnectionLost,   // -1005
+                 NSURLErrorTimedOut,                // -1001
+                 NSURLErrorCannotConnectToHost,     // -1004
+                 NSURLErrorNotConnectedToInternet,  // -1009
+                 NSURLErrorDNSLookupFailed,         // -1006
+                 NSURLErrorCannotFindHost:          // -1003
+                return true
+            default:
+                return false
+            }
+        }
+        return true
+    }
+
+    private func isConnectionDrop(error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorNetworkConnectionLost
+    }
+
+    private func executeUpload(
+        endpoint: URL,
+        apiKey: String,
+        audioData: Data,
+        filename: String,
+        mimeType: String,
+        language: String
+    ) async throws -> String {
         let boundary = "Boundary-\(UUID().uuidString)"
 
         var request = URLRequest(url: endpoint)
@@ -62,8 +158,8 @@ final class Transcriber {
 
         // 4. File field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
         body.append(audioData)
         body.append("\r\n".data(using: .utf8)!)
 
@@ -78,7 +174,7 @@ final class Transcriber {
 
         if httpResponse.statusCode != 200 {
             let errMsg = String(data: data, encoding: .utf8) ?? "Unknown server error"
-            NSLog("[Transcriber] Server returned %d: %@", httpResponse.statusCode, errMsg)
+            Logger.log("[Transcriber] Server returned %d: %@", httpResponse.statusCode, errMsg)
             throw TranscriberError.invalidResponse(statusCode: httpResponse.statusCode, message: errMsg)
         }
 
@@ -88,7 +184,7 @@ final class Transcriber {
 
         let parsed = try JSONDecoder().decode(OpenAIResponse.self, from: data)
         let text = parsed.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        NSLog("[Transcriber] Success: %d characters", text.count)
+        Logger.log("[Transcriber] Success: %d characters", text.count)
         return text
     }
 }

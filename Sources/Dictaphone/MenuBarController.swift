@@ -5,6 +5,7 @@ protocol MenuBarControllerDelegate: AnyObject {
     func menuBarDidChangeActive(_ active: Bool)
     func menuBarDidChangeHotkey(_ hotkey: Hotkey)
     func menuBarDidChangeLanguage(_ language: String)
+    func menuBarDidRequestRetry()
     func menuBarDidRequestQuit()
 }
 
@@ -14,10 +15,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     weak var delegate: MenuBarControllerDelegate?
 
     private var activeMenuItem: NSMenuItem!
+    private var retryMenuItem: NSMenuItem!
     private var hotkeyMenu: NSMenu!
     private var languageMenu: NSMenu!
     private var historyMenu: NSMenu!
     private var launchAtLoginItem: NSMenuItem!
+
+    private var isRecording = false
+    private var isTranscribing = false
 
     override init() {
         super.init()
@@ -37,8 +42,28 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     func setRecording(_ recording: Bool) {
         DispatchQueue.main.async { [weak self] in
-            guard let button = self?.statusItem.button else { return }
-            button.title = recording ? "●" : "◉"
+            guard let self = self else { return }
+            self.isRecording = recording
+            self.updateStatusButtonTitle()
+        }
+    }
+
+    func setTranscribing(_ transcribing: Bool) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isTranscribing = transcribing
+            self.updateStatusButtonTitle()
+        }
+    }
+
+    private func updateStatusButtonTitle() {
+        guard let button = statusItem.button else { return }
+        if isRecording {
+            button.title = "●"
+        } else if isTranscribing {
+            button.title = "◌"
+        } else {
+            button.title = "◉"
         }
     }
 
@@ -53,6 +78,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         activeMenuItem = NSMenuItem(title: "Active", action: #selector(toggleActive), keyEquivalent: "")
         activeMenuItem.target = self
         menu.addItem(activeMenuItem)
+
+        // 1b. Retry Last Dictation (Shift+Cmd+R)
+        retryMenuItem = NSMenuItem(title: "Retry Last Dictation", action: #selector(retryLastDictation), keyEquivalent: "R")
+        retryMenuItem.keyEquivalentModifierMask = [.command, .shift]
+        retryMenuItem.target = self
+        menu.addItem(retryMenuItem)
 
         // 2. Recent Transcriptions (History) Submenu
         let historyParent = NSMenuItem(title: "Recent Transcriptions", action: nil, keyEquivalent: "")
@@ -124,10 +155,25 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         refreshMenuStates()
     }
 
+    func updateRetryState() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if let failedInfo = RecoveryManager.shared.getLastFailedAudioInfo() {
+                let durStr = failedInfo.duration > 0 ? String(format: " (%.0fs)", failedInfo.duration) : ""
+                self.retryMenuItem.title = "Retry Last Dictation\(durStr)"
+                self.retryMenuItem.isEnabled = true
+            } else {
+                self.retryMenuItem.title = "Retry Last Dictation"
+                self.retryMenuItem.isEnabled = false
+            }
+        }
+    }
+
     private func refreshMenuStates() {
         let config = ConfigManager.shared.config
 
         activeMenuItem.state = config.active ? .on : .off
+        updateRetryState()
 
         for item in hotkeyMenu.items {
             if let key = item.representedObject as? Hotkey {
@@ -174,6 +220,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             clearItem.target = self
             historyMenu.addItem(clearItem)
         }
+    }
+
+    @objc private func retryLastDictation() {
+        delegate?.menuBarDidRequestRetry()
     }
 
     @objc private func openHistoryWindow() {

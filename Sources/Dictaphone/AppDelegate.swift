@@ -67,12 +67,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         }
 
         let language = ConfigManager.shared.config.language
-        Logger.log("[AudioRecorder] Audio captured (wav: %@). Requesting transcription (lang: %@)...", fileURL.lastPathComponent, language)
+        let duration = recorder.lastDuration
+        Logger.log("[AudioRecorder] Audio captured (file: %@, duration: %.1fs). Requesting transcription (lang: %@)...", fileURL.lastPathComponent, duration, language)
+
+        menuBarController.setTranscribing(true)
 
         Task {
             do {
                 let text = try await transcriber.transcribe(fileURL: fileURL, language: language)
                 try? FileManager.default.removeItem(at: fileURL)
+
+                await MainActor.run {
+                    self.menuBarController.setTranscribing(false)
+                }
 
                 if !text.isEmpty {
                     HistoryManager.shared.add(text: text)
@@ -84,9 +91,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
                     Logger.endSessionSilent()
                 }
             } catch {
-                try? FileManager.default.removeItem(at: fileURL)
+                // Preserve audio in recovery cache instead of deleting
+                RecoveryManager.shared.saveFailedAudio(
+                    from: fileURL,
+                    language: language,
+                    duration: duration,
+                    error: error.localizedDescription
+                )
+
                 Logger.endSessionError(error: error.localizedDescription)
                 await MainActor.run {
+                    self.menuBarController.setTranscribing(false)
+                    self.menuBarController.updateRetryState()
                     self.showErrorNotification(error.localizedDescription)
                 }
             }
@@ -114,17 +130,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         Logger.log("[AppDelegate] Language changed to: %@", language)
     }
 
+    func menuBarDidRequestRetry() {
+        retryLastTranscription()
+    }
+
     func menuBarDidRequestQuit() {
         Logger.log("[AppDelegate] Quit requested via menu bar.")
         NSApp.terminate(nil)
     }
 
+    // MARK: - Retry Logic
+
+    func retryLastTranscription() {
+        guard let failedInfo = RecoveryManager.shared.getLastFailedAudioInfo() else {
+            Logger.log("[AppDelegate] Retry requested, but no failed dictation found in recovery cache.")
+            return
+        }
+
+        Logger.log("[AppDelegate] Retrying failed dictation (duration: %.1fs, file: %@)...", failedInfo.duration, failedInfo.url.lastPathComponent)
+        menuBarController.setTranscribing(true)
+
+        Task {
+            do {
+                let text = try await transcriber.transcribe(fileURL: failedInfo.url, language: failedInfo.language)
+                RecoveryManager.shared.clearFailedAudio()
+
+                await MainActor.run {
+                    self.menuBarController.setTranscribing(false)
+                    self.menuBarController.updateRetryState()
+                }
+
+                if !text.isEmpty {
+                    HistoryManager.shared.add(text: text)
+                    Logger.endSessionSuccess(text: text, charsCount: text.count)
+                    await MainActor.run {
+                        Paster.shared.paste(text: text)
+                    }
+                } else {
+                    Logger.endSessionSilent()
+                }
+            } catch {
+                Logger.log("[AppDelegate] Retry transcription failed: %@", error.localizedDescription)
+                await MainActor.run {
+                    self.menuBarController.setTranscribing(false)
+                    self.menuBarController.updateRetryState()
+                    self.showErrorNotification(error.localizedDescription)
+                }
+            }
+        }
+    }
+
     private func showErrorNotification(_ message: String) {
         let alert = NSAlert()
         alert.messageText = "Dictaphone"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.runModal()
+        if let failedInfo = RecoveryManager.shared.getLastFailedAudioInfo() {
+            let durStr = failedInfo.duration > 0 ? String(format: " (%.0f сек)", failedInfo.duration) : ""
+            alert.informativeText = "Ошибка сети: \(message)\n\nВаша голосовая запись\(durStr) надёжно сохранена! Вы можете повторить отправку прямо сейчас или позже через меню Dictaphone (или Cmd+Shift+R)."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Повторить сейчас")
+            alert.addButton(withTitle: "Оставить в меню")
+
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                self.retryLastTranscription()
+            }
+        } else {
+            alert.informativeText = message
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     private func setupMainMenu() {
@@ -136,6 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         appMenu.addItem(prefItem)
         appMenu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit Dictaphone", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = self
         appMenu.addItem(quitItem)
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)

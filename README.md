@@ -14,9 +14,13 @@ Built completely in **Swift** with **zero external dependencies**, relying exclu
 
 - **Ultra-lightweight**: App bundle is **~280 KB** (compared to ~150+ MB for Python + virtualenv).
 - **Minimal memory footprint**: Runs quietly in the menu bar consuming **~15–25 MB RAM** (vs 120+ MB for Python).
+- **Optimized High-Speed Audio Pipeline**: Records compact AAC 16kHz Mono (`.m4a`) at 32 kbps (with WAV fallback), cutting network upload payloads by ~8x (~160 KB for 40s of voice) for lightning-fast uploads even on high-latency Wi-Fi.
+- **Zero Data Loss & Audio Recovery Engine**: If network drops persist after all retries, audio is preserved in `~/.dictaphone/recovery/last_failed.m4a`. One-click **«Retry Last Dictation»** (`Shift+Cmd+R`) or alert action instantly re-transcribes and pastes without re-speaking.
+- **Resilient Network Retry Engine**: Transparently retries transient connection drops (`-1005`, timeouts, rate limits) up to 3 times with exponential backoff on clean sockets.
 - **Transcriptions History Studio (`Cmd+H`)**: Native dedicated window featuring dynamic row expansion on click, inline editing, multi-select prompt stitching, and tactile copy confirmation.
 - **Dedicated Preferences Window (`Cmd+,`)**: Native settings modal to customize hotkeys, languages, OpenAI API keys, history capacity, and window opening focus behavior.
 - **High-Contrast Top-Right HUD**: Monospaced elapsed timer with glowing pulsing dot rendered in a dark graphite pill, guaranteed visible over light and dark themes and across all full-screen spaces.
+- **Live Visual Feedback**: Menu bar icon transitions smoothly between idle (`◉`), recording (`●`), and active transcription (`◌`).
 - **Zero latency**: Native Cocoa run loop, instant hotkey responsiveness, and immediate audio pipeline start.
 - **True macOS App Bundle**: Packaged into a standard `Dictaphone.app` and downloadable `Dictaphone.dmg`.
 - **System-level Permissions**: Accessibility and Microphone permissions attach directly to `Dictaphone.app` rather than terminal wrappers or Python binaries, preventing permission invalidation across updates.
@@ -28,17 +32,19 @@ Built completely in **Swift** with **zero external dependencies**, relying exclu
 ## How It Works
 
 ```
-[ Hold Right ⌘ ] ──> Starts AVAudioRecorder (16kHz Mono Linear PCM WAV)
+[ Hold Right ⌘ ] ──> Starts AVAudioRecorder (16kHz Mono AAC .m4a, fallback WAV)
                  ──> Displays floating HUD overlay (pulsing red dot + MM:SS timer)
                  ──> Changes menu bar icon from ◉ to ●
 
 [ Speak ]        ──> Accidental press protection: typing another key (e.g. Cmd+Space)
                      cancels recording on release without transcribing.
 
-[ Release ⌘ ]    ──> Hides HUD overlay, restores menu bar icon to ◉
-                 ──> Stops recorder, discards if < 0.25s or < 2 KB
-                 ──> Sends multipart/form-data to OpenAI API asynchronously
-                 ──> Restores clipboard after pasting text via synthetic Cmd+V
+[ Release ⌘ ]    ──> Hides HUD overlay, changes menu bar icon to ◌ (processing)
+                 ──> Stops recorder, discards if < 0.25s or < 1 KB
+                 ──> Sends lightweight multipart payload to OpenAI API asynchronously
+                 ──> Automatic retries (up to 3x) if transient connection drop occurs
+                 ──> On success: pastes text via synthetic Cmd+V, restores clipboard, icon ◉
+                 ──> On failure: preserves voice in recovery cache, offers ⇧⌘R retry in menu
 ```
 
 ---
@@ -57,8 +63,9 @@ mac-voice-ptt/
 │       ├── AppDelegate.swift      # NSApplication lifecycle coordinator & background policy
 │       ├── Config.swift           # JSON config manager (~/.dictaphone/config.json & .env)
 │       ├── HotkeyManager.swift    # Global keyboard listener & permission watcher
-│       ├── AudioRecorder.swift    # 16kHz WAV capture via AVFoundation (with prepare & padding)
-│       ├── Transcriber.swift      # Async URLSession multipart client for OpenAI API
+│       ├── AudioRecorder.swift    # 16kHz AAC/WAV capture via AVFoundation (with prepare & padding)
+│       ├── RecoveryManager.swift  # Zero data loss recovery cache for failed voice dictations
+│       ├── Transcriber.swift      # Async URLSession multipart client with automatic retry logic
 │       ├── OverlayPanel.swift     # Floating HUD overlay with live timer & pulsing dot
 │       ├── HistoryManager.swift   # History manager with JSON persistence, updates & combined copy
 │       ├── HistoryWindowController.swift # Interactive history studio window (inline edit, multi-select)
