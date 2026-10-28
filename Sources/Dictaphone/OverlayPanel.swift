@@ -8,9 +8,10 @@ final class OverlayPanel: NSPanel {
     private var timerSource: DispatchSourceTimer?
     private var startTime: Date?
     private var pulseOn = true
+    private var isProcessing = false
 
     init() {
-        let panelWidth: CGFloat = 136.0
+        let panelWidth: CGFloat = 144.0
         let panelHeight: CGFloat = 38.0
         let contentRect = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
 
@@ -23,10 +24,10 @@ final class OverlayPanel: NSPanel {
         containerView.layer?.borderWidth = 1.0
         containerView.layer?.borderColor = NSColor(white: 0.30, alpha: 0.8).cgColor
 
-        // 2. Bright glowing red recording dot
+        // 2. Indicator dot / icon (red for recording, cyan for processing, green for done)
         let dotSize: CGFloat = 10.0
         let dotY = (panelHeight - dotSize) / 2.0
-        dotView = NSView(frame: NSRect(x: 18.0, y: dotY, width: dotSize, height: dotSize))
+        dotView = NSView(frame: NSRect(x: 16.0, y: dotY, width: dotSize, height: dotSize))
         dotView.wantsLayer = true
         dotView.layer?.cornerRadius = dotSize / 2.0
         dotView.layer?.backgroundColor = NSColor.systemRed.cgColor
@@ -36,13 +37,13 @@ final class OverlayPanel: NSPanel {
         dotView.layer?.shadowOffset = .zero
         containerView.addSubview(dotView)
 
-        // 3. Crisp, 100% white monospaced timer label (pure white on solid dark)
-        let labelX: CGFloat = 38.0
-        let labelWidth: CGFloat = panelWidth - labelX - 12.0
+        // 3. Crisp white label
+        let labelX: CGFloat = 34.0
+        let labelWidth: CGFloat = panelWidth - labelX - 10.0
         let labelY = (panelHeight - 22.0) / 2.0
         timerLabel = NSTextField(labelWithString: "00:00")
         timerLabel.frame = NSRect(x: labelX, y: labelY, width: labelWidth, height: 22.0)
-        timerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 18.0, weight: .bold)
+        timerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 15.0, weight: .bold)
         timerLabel.textColor = .white
         timerLabel.backgroundColor = .clear
         timerLabel.isBezeled = false
@@ -62,7 +63,7 @@ final class OverlayPanel: NSPanel {
 
         // Level 1500 (assistiveTechHighWindow) floats above all spaces, full-screen windows, and apps
         self.level = NSWindow.Level(Int(CGWindowLevelForKey(.assistiveTechHighWindow)))
-        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
@@ -76,41 +77,109 @@ final class OverlayPanel: NSPanel {
     override var canBecomeKey: Bool { return false }
     override var canBecomeMain: Bool { return false }
 
-    func show() {
-        DispatchQueue.main.async {
+    // MARK: - State Management
+
+    func showRecording() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isProcessing = false
             self.updatePosition()
+            self.setIndicatorState(color: .systemRed, text: "00:00")
             self.startTimer()
             self.alphaValue = 1.0
             self.orderFrontRegardless()
-            Logger.log("[OverlayPanel] HUD timer ordered front in top-right corner (level=%ld)", self.level.rawValue)
+            Logger.log("[OverlayPanel] HUD recording started in top-right corner (level=%ld)", self.level.rawValue)
         }
+    }
+
+    func showProcessing() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isProcessing = true
+            self.stopTimer()
+
+            // Keep HUD visible and transition to processing mode
+            self.setIndicatorState(color: .systemTeal, text: "Processing…")
+            self.startProcessingPulse()
+            self.alphaValue = 1.0
+            self.orderFrontRegardless()
+            Logger.log("[OverlayPanel] HUD transitioned to processing mode.")
+        }
+    }
+
+    func showSuccess(completion: @escaping () -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                completion()
+                return
+            }
+            self.stopTimer()
+            self.setIndicatorState(color: .systemGreen, text: "Done ✓")
+
+            // Keep "Done ✓" visible for 350ms, then fade out and execute paste
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.2
+                    self.animator().alphaValue = 0.0
+                }, completionHandler: {
+                    self.orderOut(nil)
+                    self.alphaValue = 1.0
+                    completion()
+                })
+            }
+        }
+    }
+
+    func hideImmediate() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.stopTimer()
+            self.isProcessing = false
+            self.orderOut(nil)
+            self.alphaValue = 1.0
+        }
+    }
+
+    // Backward compatibility helper
+    func show() {
+        showRecording()
     }
 
     func hide() {
-        DispatchQueue.main.async {
-            self.stopTimer()
-            self.orderOut(nil)
-        }
+        hideImmediate()
     }
 
+    // MARK: - Positioning
+
     private func updatePosition() {
-        // Track the screen containing the cursor
+        // Priority:
+        // 1. Screen containing the focused window where user is typing (NSScreen.main)
+        // 2. Screen containing cursor
+        // 3. Primary screen
         let mouseLoc = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) })
-            ?? NSScreen.main
+        let targetScreen = NSScreen.main
+            ?? NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) })
             ?? NSScreen.screens.first
 
-        guard let targetScreen = screen else { return }
-        let visibleFrame = targetScreen.visibleFrame
-        let panelWidth: CGFloat = 136.0
+        guard let screen = targetScreen else { return }
+        let visibleFrame = screen.visibleFrame
+        let panelWidth: CGFloat = 144.0
         let panelHeight: CGFloat = 38.0
         let margin: CGFloat = 20.0
 
-        // Top-Right corner below menu bar
         let originX = visibleFrame.maxX - panelWidth - margin
         let originY = visibleFrame.maxY - panelHeight - margin
 
         self.setFrame(NSRect(x: originX, y: originY, width: panelWidth, height: panelHeight), display: true)
+    }
+
+    // MARK: - Timer & Animations
+
+    private func setIndicatorState(color: NSColor, text: String) {
+        dotView.layer?.backgroundColor = color.cgColor
+        dotView.layer?.shadowColor = color.cgColor
+        dotView.layer?.opacity = 1.0
+        timerLabel.stringValue = text
     }
 
     private func startTimer() {
@@ -123,7 +192,23 @@ final class OverlayPanel: NSPanel {
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 0.25, repeating: 0.25)
         timer.setEventHandler { [weak self] in
-            self?.tick()
+            self?.tickRecording()
+        }
+        timer.resume()
+        self.timerSource = timer
+    }
+
+    private func startProcessingPulse() {
+        stopTimer()
+        pulseOn = true
+        dotView.layer?.opacity = 1.0
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 0.35, repeating: 0.35)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            self.pulseOn.toggle()
+            self.dotView.layer?.opacity = self.pulseOn ? 1.0 : 0.4
         }
         timer.resume()
         self.timerSource = timer
@@ -135,7 +220,7 @@ final class OverlayPanel: NSPanel {
         startTime = nil
     }
 
-    private func tick() {
+    private func tickRecording() {
         guard let start = startTime else { return }
         let elapsed = Int(Date().timeIntervalSince(start))
         let mm = elapsed / 60

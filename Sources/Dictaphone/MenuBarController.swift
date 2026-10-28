@@ -5,6 +5,7 @@ protocol MenuBarControllerDelegate: AnyObject {
     func menuBarDidChangeActive(_ active: Bool)
     func menuBarDidChangeHotkey(_ hotkey: Hotkey)
     func menuBarDidChangeLanguage(_ language: String)
+    func menuBarDidChangeModel(_ model: String)
     func menuBarDidRequestRetry()
     func menuBarDidRequestQuit()
 }
@@ -18,6 +19,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var retryMenuItem: NSMenuItem!
     private var hotkeyMenu: NSMenu!
     private var languageMenu: NSMenu!
+    private var modelMenu: NSMenu!
     private var historyMenu: NSMenu!
     private var launchAtLoginItem: NSMenuItem!
 
@@ -123,6 +125,23 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         langParent.submenu = languageMenu
         menu.addItem(langParent)
 
+        // 4b. Model submenu
+        let modelParent = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
+        modelMenu = NSMenu(title: "Model")
+        let models = [
+            ("whisper-1", "Whisper (Fastest, $0.006/min)"),
+            ("gpt-4o-mini-transcribe", "GPT-4o Mini Transcribe ($0.003/min)"),
+            ("gpt-4o-transcribe", "GPT-4o Transcribe ($0.006/min)")
+        ]
+        for (id, label) in models {
+            let item = NSMenuItem(title: label, action: #selector(selectModel(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = id
+            modelMenu.addItem(item)
+        }
+        modelParent.submenu = modelMenu
+        menu.addItem(modelParent)
+
         menu.addItem(NSMenuItem.separator())
 
         // 5. Preferences Window
@@ -184,6 +203,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         for item in languageMenu.items {
             if let code = item.representedObject as? String {
                 item.state = (code == config.language) ? .on : .off
+            }
+        }
+
+        for item in modelMenu.items {
+            if let id = item.representedObject as? String {
+                item.state = (id == config.model) ? .on : .off
             }
         }
 
@@ -264,6 +289,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         ConfigManager.shared.update(language: code)
         refreshMenuStates()
         delegate?.menuBarDidChangeLanguage(code)
+    }
+
+    @objc private func selectModel(_ sender: NSMenuItem) {
+        guard let modelId = sender.representedObject as? String else { return }
+        ConfigManager.shared.update(model: modelId)
+        refreshMenuStates()
+        delegate?.menuBarDidChangeModel(modelId)
     }
 
     @objc private func toggleLaunchAtLogin() {

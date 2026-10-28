@@ -58,11 +58,14 @@ final class Transcriber {
 
         let maxAttempts = 3
         var lastError: Error?
+        let selectedModel = ConfigManager.shared.config.model
 
         for attempt in 1...maxAttempts {
             do {
                 if attempt > 1 {
-                    Logger.log("[Transcriber] Retrying transcription (attempt %d of %d)...", attempt, maxAttempts)
+                    Logger.log("[Transcriber] Retrying transcription (attempt %d of %d, model: %@)...", attempt, maxAttempts, selectedModel)
+                } else {
+                    Logger.log("[Transcriber] Requesting transcription (model: %@, lang: %@)...", selectedModel, language)
                 }
                 return try await executeUpload(
                     endpoint: endpoint,
@@ -70,7 +73,8 @@ final class Transcriber {
                     audioData: audioData,
                     filename: filename,
                     mimeType: mimeType,
-                    language: language
+                    language: language,
+                    model: selectedModel
                 )
             } catch {
                 lastError = error
@@ -134,7 +138,8 @@ final class Transcriber {
         audioData: Data,
         filename: String,
         mimeType: String,
-        language: String
+        language: String,
+        model: String
     ) async throws -> String {
         let boundary = "Boundary-\(UUID().uuidString)"
 
@@ -146,7 +151,7 @@ final class Transcriber {
         var body = Data()
 
         // 1. Model field
-        body.appendMultipart(boundary: boundary, name: "model", value: "gpt-4o-mini-transcribe")
+        body.appendMultipart(boundary: boundary, name: "model", value: model)
 
         // 2. Prompt field
         body.appendMultipart(boundary: boundary, name: "prompt", value: promptText)

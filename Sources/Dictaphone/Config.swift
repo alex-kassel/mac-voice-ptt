@@ -15,6 +15,7 @@ enum HistoryFocusMode: String, Codable, CaseIterable {
 struct AppConfig: Codable {
     var hotkey: String = "cmd_r"
     var language: String = "auto"
+    var model: String = "whisper-1"
     var active: Bool = true
     var apiKey: String? = nil
     var maxHistoryItems: Int = 25
@@ -22,12 +23,36 @@ struct AppConfig: Codable {
 
     static let validHotkeys: Set<String> = ["cmd_r", "alt_r", "ctrl_r"]
     static let validLanguages: Set<String> = ["auto", "ru", "de", "en"]
+    static let validModels: Set<String> = ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"]
     static let validFocusModes: Set<String> = ["first_item", "search_field"]
 
     var focusMode: HistoryFocusMode {
         get { HistoryFocusMode(rawValue: historyFocusMode) ?? .firstItem }
         set { historyFocusMode = newValue.rawValue }
     }
+
+    enum CodingKeys: String, CodingKey {
+        case hotkey
+        case language
+        case model
+        case active
+        case apiKey
+        case maxHistoryItems
+        case historyFocusMode
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hotkey = try container.decodeIfPresent(String.self, forKey: .hotkey) ?? "cmd_r"
+        language = try container.decodeIfPresent(String.self, forKey: .language) ?? "auto"
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? "whisper-1"
+        active = try container.decodeIfPresent(Bool.self, forKey: .active) ?? true
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey)
+        maxHistoryItems = try container.decodeIfPresent(Int.self, forKey: .maxHistoryItems) ?? 25
+        historyFocusMode = try container.decodeIfPresent(String.self, forKey: .historyFocusMode) ?? "first_item"
+    }
+
+    init() {}
 }
 
 final class ConfigManager {
@@ -62,6 +87,9 @@ final class ConfigManager {
         if !AppConfig.validLanguages.contains(valid.language) {
             valid.language = "auto"
         }
+        if !AppConfig.validModels.contains(valid.model) {
+            valid.model = "whisper-1"
+        }
         if !AppConfig.validFocusModes.contains(valid.historyFocusMode) {
             valid.historyFocusMode = "first_item"
         }
@@ -85,6 +113,12 @@ final class ConfigManager {
     func update(language: String) {
         guard AppConfig.validLanguages.contains(language) else { return }
         config.language = language
+        save()
+    }
+
+    func update(model: String) {
+        guard AppConfig.validModels.contains(model) else { return }
+        config.model = model
         save()
     }
 

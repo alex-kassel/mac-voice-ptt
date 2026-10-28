@@ -1,6 +1,6 @@
 # AGENTS.MD — `mac-voice-ptt` (Dictaphone)
 
-Push-to-Talk voice dictation tool for macOS powered by OpenAI's `gpt-4o-mini-transcribe`.
+Push-to-Talk voice dictation tool for macOS powered by OpenAI (`whisper-1` by default, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe`).
 
 ---
 
@@ -19,7 +19,8 @@ Push-to-Talk voice dictation tool for macOS powered by OpenAI's `gpt-4o-mini-tra
    - Audio files are deleted immediately after transcription completes or upon user cancellation. Discards recordings shorter than 0.25s.
 
 3. **Transcription & Auto-Paste (`Transcriber.swift`, `Paster.swift`)**:
-   - Async `URLSession` multipart client calling OpenAI audio transcriptions endpoint (`gpt-4o-mini-transcribe`).
+   - Async `URLSession` multipart client calling OpenAI audio transcriptions endpoint.
+   - Configurable models: `whisper-1` (default, ~3x faster, $0.006/min), `gpt-4o-mini-transcribe` ($0.003/min), and `gpt-4o-transcribe` ($0.006/min).
    - Built-in automatic retry engine (up to 3 attempts with exponential backoff) for transient network drops (`NSURLErrorNetworkConnectionLost`, `-1005`, timeouts, and HTTP 5xx/429).
    - Re-creates URLSession connection pool upon socket disconnection to prevent Cloudflare/OpenAI idle keep-alive stale drops.
    - Restores existing clipboard content after dispatching a synthetic `Cmd+V` keystroke via `CGEvent` to `kCGHIDEventTap`.
@@ -35,10 +36,13 @@ Push-to-Talk voice dictation tool for macOS powered by OpenAI's `gpt-4o-mini-tra
    - Explicitly configured with:
      ```swift
      self.level = NSWindow.Level(Int(CGWindowLevelForKey(.assistiveTechHighWindow))) // Layer 1500
-     self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+     self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
      ```
-   - Position: **Top-Right corner of the active display** (`visibleFrame.maxX - width - 20`, `visibleFrame.maxY - height - 20`), tracking the cursor display location (`NSEvent.mouseLocation`).
-   - UI: High-contrast dark graphite container (`#1a1a1f`, 95% opacity, `darkAqua`), glowing red recording dot, and bold monospaced white timer (18pt bold) driven by a GCD `DispatchSourceTimer` on the main queue (`queue: .main`).
+   - Position: **Top-Right corner of the focused display** (`NSScreen.main`, fallback to mouse cursor screen), tracking active window keyboard focus across all Full-Screen apps and Spaces.
+   - **Continuous 3-Stage Feedback Loop**:
+     - *Recording*: Glowing red dot + active monospaced elapsed timer (`● 00:05`).
+     - *Processing*: Keeps HUD visible on key release; switches to pulsing cyan indicator with `Processing…`.
+     - *Success*: Flashes green checkmark `Done ✓` for 350ms before fading out, executing synthetic paste.
 
 6. **Recent Transcriptions History Studio (`HistoryManager.swift`, `HistoryWindowController.swift`)**:
    - Stores recent transcriptions in `~/.dictaphone/history.json` (configurable max items, default 25).

@@ -1,6 +1,6 @@
 # Dictaphone — Push-to-Talk Voice Transcription for macOS
 
-**Dictaphone** is a native, lightweight macOS push-to-talk voice transcription utility. Hold down a configurable modifier key (by default, Right Command ⌘), speak into your microphone, and release: your speech is transcribed via OpenAI's `gpt-4o-mini-transcribe` and instantly typed/pasted at your current cursor position.
+**Dictaphone** is a native, lightweight macOS push-to-talk voice transcription utility. Hold down a configurable modifier key (by default, Right Command ⌘), speak into your microphone, and release: your speech is transcribed via OpenAI (`whisper-1` by default) and instantly typed/pasted at your current cursor position.
 
 Built completely in **Swift** with **zero external dependencies**, relying exclusively on native macOS frameworks (`AppKit`, `AVFoundation`, `CoreGraphics`, `ServiceManagement`, `Foundation`).
 
@@ -14,13 +14,17 @@ Built completely in **Swift** with **zero external dependencies**, relying exclu
 
 - **Ultra-lightweight**: App bundle is **~280 KB** (compared to ~150+ MB for Python + virtualenv).
 - **Minimal memory footprint**: Runs quietly in the menu bar consuming **~15–25 MB RAM** (vs 120+ MB for Python).
+- **Ultra-Fast Multi-Model Engine**: Powered by `whisper-1` by default (~3x faster than LLM transcribers, ~$0.006/min), with one-click model switching to `gpt-4o-mini-transcribe` ($0.003/min) or `gpt-4o-transcribe` ($0.006/min) directly from the Menu Bar or Preferences window.
+- **Continuous 3-Stage HUD & Full-Screen Spaces Support**:
+  - *Recording*: Glowing red indicator + active elapsed timer (`● 00:05`).
+  - *Processing*: Keeps HUD open when releasing key, transitioning into an active processing spinner (`◌ Processing…`).
+  - *Success*: Flashes green checkmark `Done ✓` for 350ms before smoothly dismissing and pasting.
+  - *Space-aware*: Anchors to the focused active window (`NSScreen.main`) across all native Full-Screen spaces (Firefox, Antigravity, etc.).
 - **Optimized High-Speed Audio Pipeline**: Records compact AAC 16kHz Mono (`.m4a`) at 32 kbps (with WAV fallback), cutting network upload payloads by ~8x (~160 KB for 40s of voice) for lightning-fast uploads even on high-latency Wi-Fi.
 - **Zero Data Loss & Audio Recovery Engine**: If network drops persist after all retries, audio is preserved in `~/.dictaphone/recovery/last_failed.m4a`. One-click **«Retry Last Dictation»** (`Shift+Cmd+R`) or alert action instantly re-transcribes and pastes without re-speaking.
 - **Resilient Network Retry Engine**: Transparently retries transient connection drops (`-1005`, timeouts, rate limits) up to 3 times with exponential backoff on clean sockets.
 - **Transcriptions History Studio (`Cmd+H`)**: Native dedicated window featuring dynamic row expansion on click, inline editing, multi-select prompt stitching, and tactile copy confirmation.
-- **Dedicated Preferences Window (`Cmd+,`)**: Native settings modal to customize hotkeys, languages, OpenAI API keys, history capacity, and window opening focus behavior.
-- **High-Contrast Top-Right HUD**: Monospaced elapsed timer with glowing pulsing dot rendered in a dark graphite pill, guaranteed visible over light and dark themes and across all full-screen spaces.
-- **Live Visual Feedback**: Menu bar icon transitions smoothly between idle (`◉`), recording (`●`), and active transcription (`◌`).
+- **Dedicated Preferences Window (`Cmd+,`)**: Native settings modal to customize hotkeys, languages, OpenAI models, API keys, history capacity, and window opening focus behavior.
 - **Zero latency**: Native Cocoa run loop, instant hotkey responsiveness, and immediate audio pipeline start.
 - **True macOS App Bundle**: Packaged into a standard `Dictaphone.app` and downloadable `Dictaphone.dmg`.
 - **System-level Permissions**: Accessibility and Microphone permissions attach directly to `Dictaphone.app` rather than terminal wrappers or Python binaries, preventing permission invalidation across updates.
@@ -39,11 +43,11 @@ Built completely in **Swift** with **zero external dependencies**, relying exclu
 [ Speak ]        ──> Accidental press protection: typing another key (e.g. Cmd+Space)
                      cancels recording on release without transcribing.
 
-[ Release ⌘ ]    ──> Hides HUD overlay, changes menu bar icon to ◌ (processing)
+[ Release ⌘ ]    ──> HUD transitions to processing mode (◌ Processing…)
                  ──> Stops recorder, discards if < 0.25s or < 1 KB
-                 ──> Sends lightweight multipart payload to OpenAI API asynchronously
+                 ──> Sends lightweight multipart payload to OpenAI (whisper-1 by default)
                  ──> Automatic retries (up to 3x) if transient connection drop occurs
-                 ──> On success: pastes text via synthetic Cmd+V, restores clipboard, icon ◉
+                 ──> On success: HUD flashes green checkmark (Done ✓), pastes text, restores icon ◉
                  ──> On failure: preserves voice in recovery cache, offers ⇧⌘R retry in menu
 ```
 

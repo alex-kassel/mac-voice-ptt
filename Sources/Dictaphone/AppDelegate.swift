@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
     func applicationWillTerminate(_ notification: Notification) {
         Logger.log("[AppDelegate] Application terminating...")
         HotkeyManager.shared.stop()
-        overlayPanel.hide()
+        overlayPanel.hideImmediate()
         recorder.cancel()
     }
 
@@ -53,15 +53,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
             Logger.endSessionError(error: "Failed to initialize and start audio input stream.")
             return
         }
-        overlayPanel.show()
+        overlayPanel.showRecording()
         menuBarController.setRecording(true)
     }
 
     func hotkeyDidStopRecording() {
-        overlayPanel.hide()
         menuBarController.setRecording(false)
 
         guard let fileURL = recorder.stop() else {
+            overlayPanel.hideImmediate()
             Logger.endSessionSilent()
             return
         }
@@ -70,6 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         let duration = recorder.lastDuration
         Logger.log("[AudioRecorder] Audio captured (file: %@, duration: %.1fs). Requesting transcription (lang: %@)...", fileURL.lastPathComponent, duration, language)
 
+        // Keep HUD visible and transition smoothly to processing mode
+        overlayPanel.showProcessing()
         menuBarController.setTranscribing(true)
 
         Task {
@@ -85,9 +87,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
                     HistoryManager.shared.add(text: text)
                     Logger.endSessionSuccess(text: text, charsCount: text.count)
                     await MainActor.run {
-                        Paster.shared.paste(text: text)
+                        self.overlayPanel.showSuccess {
+                            Paster.shared.paste(text: text)
+                        }
                     }
                 } else {
+                    await MainActor.run {
+                        self.overlayPanel.hideImmediate()
+                    }
                     Logger.endSessionSilent()
                 }
             } catch {
@@ -101,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
 
                 Logger.endSessionError(error: error.localizedDescription)
                 await MainActor.run {
+                    self.overlayPanel.hideImmediate()
                     self.menuBarController.setTranscribing(false)
                     self.menuBarController.updateRetryState()
                     self.showErrorNotification(error.localizedDescription)
@@ -110,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
     }
 
     func hotkeyDidCancelRecording() {
-        overlayPanel.hide()
+        overlayPanel.hideImmediate()
         menuBarController.setRecording(false)
         recorder.cancel()
         Logger.endSessionCancelled(reason: "Cancelled by user (other key pressed or deactivated)")
@@ -128,6 +136,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
 
     func menuBarDidChangeLanguage(_ language: String) {
         Logger.log("[AppDelegate] Language changed to: %@", language)
+    }
+
+    func menuBarDidChangeModel(_ model: String) {
+        Logger.log("[AppDelegate] Transcription model changed to: %@", model)
     }
 
     func menuBarDidRequestRetry() {
@@ -148,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
         }
 
         Logger.log("[AppDelegate] Retrying failed dictation (duration: %.1fs, file: %@)...", failedInfo.duration, failedInfo.url.lastPathComponent)
+        overlayPanel.showProcessing()
         menuBarController.setTranscribing(true)
 
         Task {
@@ -164,14 +177,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate,
                     HistoryManager.shared.add(text: text)
                     Logger.endSessionSuccess(text: text, charsCount: text.count)
                     await MainActor.run {
-                        Paster.shared.paste(text: text)
+                        self.overlayPanel.showSuccess {
+                            Paster.shared.paste(text: text)
+                        }
                     }
                 } else {
+                    await MainActor.run {
+                        self.overlayPanel.hideImmediate()
+                    }
                     Logger.endSessionSilent()
                 }
             } catch {
                 Logger.log("[AppDelegate] Retry transcription failed: %@", error.localizedDescription)
                 await MainActor.run {
+                    self.overlayPanel.hideImmediate()
                     self.menuBarController.setTranscribing(false)
                     self.menuBarController.updateRetryState()
                     self.showErrorNotification(error.localizedDescription)

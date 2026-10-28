@@ -6,6 +6,7 @@ final class PreferencesWindowController: NSWindowController {
 
     private var hotkeyPopUp: NSPopUpButton!
     private var languagePopUp: NSPopUpButton!
+    private var modelPopUp: NSPopUpButton!
     private var apiKeyField: NSSecureTextField!
     private var showApiKeyBtn: NSButton!
     private var apiKeyVisibleField: NSTextField!
@@ -19,7 +20,7 @@ final class PreferencesWindowController: NSWindowController {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -38,7 +39,7 @@ final class PreferencesWindowController: NSWindowController {
         contentView.autoresizingMask = [.width, .height]
         window.contentView = contentView
 
-        var y: CGFloat = 410.0
+        var y: CGFloat = 450.0
         let labelX: CGFloat = 24.0
         let fieldX: CGFloat = 180.0
         let fieldWidth: CGFloat = 280.0
@@ -75,6 +76,25 @@ final class PreferencesWindowController: NSWindowController {
         languagePopUp.target = self
         languagePopUp.action = #selector(languageChanged)
         contentView.addSubview(languagePopUp)
+
+        // 2b. AI Model
+        y -= 40
+        let modelLabel = createLabel(text: "AI Transcription Model:", x: labelX, y: y)
+        contentView.addSubview(modelLabel)
+
+        modelPopUp = NSPopUpButton(frame: NSRect(x: fieldX, y: y - 4, width: fieldWidth, height: 26), pullsDown: false)
+        let models: [(id: String, name: String)] = [
+            ("whisper-1", "Whisper (whisper-1) — Fastest ($0.006/min)"),
+            ("gpt-4o-mini-transcribe", "GPT-4o Mini Transcribe ($0.003/min)"),
+            ("gpt-4o-transcribe", "GPT-4o Transcribe ($0.006/min)")
+        ]
+        for m in models {
+            modelPopUp.addItem(withTitle: m.name)
+            modelPopUp.lastItem?.representedObject = m.id
+        }
+        modelPopUp.target = self
+        modelPopUp.action = #selector(modelChanged)
+        contentView.addSubview(modelPopUp)
 
         // 3. OpenAI API Key
         y -= 40
@@ -159,7 +179,7 @@ final class PreferencesWindowController: NSWindowController {
 
         // Bottom Bar: Version & Done button
         let bottomY: CGFloat = 16.0
-        let versionLabel = createLabel(text: "Dictaphone v1.2.2 • Native macOS Swift • OpenAI gpt-4o-mini", x: 24.0, y: bottomY + 4)
+        let versionLabel = createLabel(text: "Dictaphone v1.3.0 • Native macOS Swift • Multi-Model", x: 24.0, y: bottomY + 4)
         versionLabel.font = NSFont.systemFont(ofSize: 11.0)
         versionLabel.textColor = .tertiaryLabelColor
         contentView.addSubview(versionLabel)
@@ -193,6 +213,10 @@ final class PreferencesWindowController: NSWindowController {
         let langIndex = languagePopUp.itemArray.firstIndex { ($0.representedObject as? String) == config.language } ?? 0
         languagePopUp.selectItem(at: langIndex)
 
+        // Model
+        let modelIndex = modelPopUp.itemArray.firstIndex { ($0.representedObject as? String) == config.model } ?? 0
+        modelPopUp.selectItem(at: modelIndex)
+
         // API Key
         let key = ConfigManager.shared.getOpenAIKey() ?? ""
         apiKeyField.stringValue = key
@@ -220,6 +244,11 @@ final class PreferencesWindowController: NSWindowController {
     @objc private func languageChanged() {
         guard let code = languagePopUp.selectedItem?.representedObject as? String else { return }
         ConfigManager.shared.update(language: code)
+    }
+
+    @objc private func modelChanged() {
+        guard let modelId = modelPopUp.selectedItem?.representedObject as? String else { return }
+        ConfigManager.shared.update(model: modelId)
     }
 
     @objc private func toggleShowApiKey() {
