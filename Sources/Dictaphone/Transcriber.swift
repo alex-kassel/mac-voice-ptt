@@ -154,7 +154,18 @@ final class Transcriber {
         body.appendMultipart(boundary: boundary, name: "model", value: model)
 
         // 2. Prompt field
-        body.appendMultipart(boundary: boundary, name: "prompt", value: promptText)
+        // Note: gpt-4o models understand system instructions in English.
+        // But whisper-1 treats 'prompt' as prior transcript text; an English prompt causes Whisper to translate speech into English!
+        if model.hasPrefix("gpt-4o") {
+            body.appendMultipart(boundary: boundary, name: "prompt", value: promptText)
+        } else if model == "whisper-1" {
+            if language == "ru" {
+                body.appendMultipart(boundary: boundary, name: "prompt", value: "Разговорная речь на русском языке. Запись без перевода.")
+            } else if language == "de" {
+                body.appendMultipart(boundary: boundary, name: "prompt", value: "Gesprochene Sprache auf Deutsch. Transkription ohne Übersetzung.")
+            }
+            // For "auto" mode, do not send English prompt to prevent Whisper-1 from translating into English.
+        }
 
         // 3. Optional language field
         if language != "auto" {
